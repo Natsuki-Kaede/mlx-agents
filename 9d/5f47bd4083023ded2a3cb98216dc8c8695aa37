@@ -1,0 +1,19 @@
+backend/models.py
+  s_269b95d29ae1c3::t_7b951ad492e781 158-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d5f47bd4083023ded2a3cb98216dc8c8695aa37",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
