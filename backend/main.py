@@ -57,6 +57,7 @@ class RunRequest(BaseModel):
     auto_approve: list[Literal["write", "exec"]] = []
     system: str = ""
     model: str | None = None  # chat model id (folder under models/); None uses the default
+    agent: str | None = None  # agent id; None uses the default agent
 
 
 class Decision(BaseModel):
@@ -249,6 +250,56 @@ def patch_chat_settings(chat_id: str, patch: dict):
 def delete_chat(chat_id: str):
     store.delete_chat(checked_chat_id(chat_id))
     return {"id": chat_id}
+
+
+# ----- agents -----
+
+
+class AgentProfile(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    icon: str = Field("🤖", min_length=1, max_length=8)
+    description: str = Field("", max_length=200)
+    instructions: str = Field("", max_length=8000)
+    permissions: Permissions = Permissions()
+    model: str | None = None
+
+
+def checked_profile(profile: AgentProfile) -> dict:
+    if profile.model:
+        try:
+            models.resolve("chat", profile.model)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    return profile.model_dump()
+
+
+@app.get("/api/agents")
+def list_agents():
+    return store.agents()
+
+
+@app.post("/api/agents")
+def create_agent(profile: AgentProfile):
+    return store.save_agent(checked_profile(profile))
+
+
+@app.put("/api/agents/{agent_id}")
+def update_agent(agent_id: str, profile: AgentProfile):
+    try:
+        return store.save_agent(checked_profile(profile) | {"id": agent_id})
+    except KeyError as exc:
+        raise HTTPException(404, "agent 不存在") from exc
+
+
+@app.delete("/api/agents/{agent_id}")
+def delete_agent(agent_id: str):
+    try:
+        store.delete_agent(agent_id)
+    except KeyError as exc:
+        raise HTTPException(404, "agent 不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"id": agent_id}
 
 
 # ----- models -----

@@ -24,7 +24,7 @@ TRIMMED_TOOL_CHARS = 500
 APPROVAL_TIMEOUT = 1800
 KEEP_FINISHED_RUNS = 50
 
-SYSTEM = """你是 MLX Agents 里的本地 AI 助手，运行在用户自己的 Mac 上，可以调用工具完成任务。当前时间：{now}。
+SYSTEM = """你是「{name}」，一个运行在用户自己 Mac 上的本地 AI agent（MLX Agents），可以调用工具完成任务。当前时间：{now}。{role}
 工作方式：
 - 3 步以上的任务先用 update_plan 列出步骤，开始和完成每一步时更新状态；简单问题直接回答，不用列计划。
 - 只调用真正需要的工具，读到结果后再决定下一步；不要编造工具没有返回的信息，出错时如实说明并换个办法。
@@ -38,11 +38,13 @@ RULES = {
 }
 
 
-def system_prompt(groups: set[str], workspace: Path) -> str:
-    rules = "\n".join(RULES[g].format(workspace=workspace) for g in ("web", "image", "files", "exec") if g in groups)
+def system_prompt(groups: set[str], workspace: Path, profile: dict | None = None) -> str:
+    profile = profile or store.get_agent(None)
+    role = f"\n\n你的角色和要求：\n{profile['instructions'].strip()}\n" if profile.get("instructions", "").strip() else ""
+    rules = "\n".join(RULES[g].format(workspace=workspace) for g in RULES if g in groups)
     items = store.memories()
     memory = ("\n\n关于用户的长期记忆（过时或错误时用 forget 删除）：\n" + "\n".join(f"- [{m['id']}] {m['text']}" for m in items)) if items else ""
-    return SYSTEM.format(now=datetime.now().strftime("%Y-%m-%d %H:%M"), rules=rules, memory=memory)
+    return SYSTEM.format(name=profile["name"], role=role, now=datetime.now().strftime("%Y-%m-%d %H:%M"), rules=rules, memory=memory)
 
 
 def _brief(tool: dict) -> str:
@@ -161,7 +163,7 @@ class Agent:
 
     def start(self, request: dict) -> Run:
         """Queue a run on the MLX thread. `request`: chat_id, content, attachments ({id, kind, url, path}),
-        params, permissions {web, image, files, exec}, auto_approve, system, model (chat model id)."""
+        params, permissions {web, image, files, exec}, auto_approve, system, model (chat model id), agent (agent id)."""
         run = Run(id=uuid.uuid4().hex[:12], chat_id=request["chat_id"], request=request, auto_approve=set(request.get("auto_approve") or []))
         # Save the user turn now, so a queued run already shows in the chat list and on reopening the chat.
         before = store.load_chat(run.chat_id) or {"turns": []}
@@ -171,7 +173,7 @@ class Agent:
 
         def add_user(c: dict) -> dict:
             title = c.get("title") or (request["content"].replace("\n", " ").strip() or "图片 / 视频对话")[:28]
-            settings = (c.get("settings") or {}) | (request.get("permissions") or {}) | {"autoApprove": sorted(run.auto_approve), "model": request.get("model")}
+            settings = (c.get("settings") or {}) | (request.get("permissions") or {}) | {"autoApprove": sorted(run.auto_approve), "model": request.get("model"), "agent": request.get("agent")}
             return c | {"title": title, "turns": [*c["turns"], user_turn], "settings": settings}
 
         store.update_chat(run.chat_id, add_user)
@@ -201,7 +203,7 @@ class Agent:
 
         tools = available(groups)
         schemas = [t.schema() for t in tools]
-        system = system_prompt(groups, workspace) + (f"\n\n用户的额外要求：\n{req['system']}" if req.get("system") else "")
+        system = system_prompt(groups, workspace, store.get_agent(req.get("agent"))) + (f"\n\n用户的额外要求：\n{req['system']}" if req.get("system") else "")
         convo = [{"role": "system", "content": system}, *history, {"role": "user", "content": req["content"]}]
         answer, thinking, tokens, stats, peak, load = "", "", {"thinking": 0, "answer": 0}, {}, 0.0, 0.0
         started = time.time()

@@ -63,7 +63,17 @@ export type Job = {
 /** Per-chat switches: which tool groups the agent may use, and which approvals it may skip. */
 export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean };
 export type ApprovalKind = "write" | "exec";
-export type ChatSettings = Permissions & { autoApprove?: ApprovalKind[]; model?: string | null };
+export type ChatSettings = Permissions & { autoApprove?: ApprovalKind[]; model?: string | null; agent?: string | null };
+export type AgentProfile = {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  instructions: string;
+  permissions: Permissions;
+  model: string | null;
+};
+export const DEFAULT_AGENT = "general";
 
 export type PlanStep = { text: string; status: "pending" | "in_progress" | "done" };
 export type ToolEvent = {
@@ -122,7 +132,7 @@ export type ChatTurn = {
   stats?: (VlmStats & { tokens?: TokenCounts }) | null;
 };
 export type SavedChat = { title: string; turns: ChatTurn[]; settings?: Partial<ChatSettings> };
-export type ChatSummary = { id: string; title: string; updated: number; turns: number };
+export type ChatSummary = { id: string; title: string; updated: number; turns: number; agent?: string | null };
 export type RunInfo = { id: string; chat_id: string; status: string; events: number; created: number };
 export type RunEvent = { seq: number } & (
   | { type: "status"; status: string; note?: string }
@@ -196,6 +206,7 @@ export const api = {
     auto_approve: ApprovalKind[];
     system: string;
     model: string | null;
+    agent: string | null;
   }) => request<RunInfo>("/api/runs", json(body)),
   cancelRun: (id: string) => request<{ id: string }>(`/api/runs/${id}/cancel`, { method: "POST" }),
   approve: (id: string, tool_id: string, decision: "allow" | "always" | "deny") =>
@@ -206,6 +217,10 @@ export const api = {
   settings: () => request<AppSettings>("/api/settings"),
   saveSettings: (patch: { workspace?: string; chat_model?: string; image_model?: string }) => request<AppSettings>("/api/settings", send("PUT", patch)),
   models: () => request<ModelList>("/api/models"),
+  agents: () => request<AgentProfile[]>("/api/agents"),
+  saveAgent: ({ id, ...profile }: Omit<AgentProfile, "id"> & { id?: string }) =>
+    id ? request<AgentProfile>(`/api/agents/${id}`, send("PUT", profile)) : request<AgentProfile>("/api/agents", json(profile)),
+  deleteAgent: (id: string) => request<{ id: string }>(`/api/agents/${id}`, { method: "DELETE" }),
   downloadModel: (repo: string) => request<ModelDownload>("/api/models/download", json({ repo })),
 };
 
@@ -238,3 +253,10 @@ export async function* watchJob(id: string, signal?: AbortSignal): AsyncGenerato
   const res = await fetch(`/api/jobs/${id}/events`, { signal });
   yield* readSse<Job>(res);
 }
+
+/** Ask the app to open the settings dialog on a tab (the dialog lives in App, the request may come from anywhere). */
+export function openSettings(tab?: string) {
+  window.dispatchEvent(new CustomEvent("open-settings", { detail: tab }));
+}
+/** Agents were added, edited or removed in settings. */
+export const AGENTS_CHANGED = "agents-changed";

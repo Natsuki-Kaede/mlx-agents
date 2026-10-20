@@ -2,7 +2,7 @@ import { MotionConfig, motion } from "motion/react";
 import { Images, MessagesSquare, Moon, Settings, Sparkle, Sun, SunMoon, Wind } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type OutputMeta, type Status } from "./api";
-import { SettingsDialog } from "./components/SettingsDialog";
+import { SettingsDialog, type SettingsTab } from "./components/SettingsDialog";
 import { spring } from "./components/ui";
 import { ChatPage } from "./pages/Chat";
 import { GalleryPage } from "./pages/Gallery";
@@ -97,6 +97,7 @@ export default function App() {
   const [calm, setCalm] = useState(() => readPref<string>("calm", "0") === "1");
   const [prefill, setPrefill] = useState<OutputMeta | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>();
   const { status, offline } = useStatus();
 
   useEffect(() => {
@@ -107,6 +108,15 @@ export default function App() {
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, [theme]);
+
+  useEffect(() => {
+    const open = (e: Event) => {
+      setSettingsTab((e as CustomEvent<SettingsTab | undefined>).detail);
+      setShowSettings(true);
+    };
+    window.addEventListener("open-settings", open);
+    return () => window.removeEventListener("open-settings", open);
+  }, []);
 
   const go = (t: Tab) => {
     setTab(t);
@@ -175,7 +185,10 @@ export default function App() {
             <button type="button" title={`主题：${theme === "system" ? "跟随系统" : theme === "light" ? "浅色" : "深色"}`} onClick={cycleTheme} className="glass grid size-9 place-items-center rounded-full">
               <ThemeIcon className="size-4" />
             </button>
-            <button type="button" title="设置" onClick={() => setShowSettings(true)} className="glass grid size-9 place-items-center rounded-full">
+            <button type="button" title="设置" onClick={() => {
+                setSettingsTab(undefined);
+                setShowSettings(true);
+              }} className="glass grid size-9 place-items-center rounded-full">
               <Settings className="size-4" />
             </button>
           </div>
@@ -195,7 +208,7 @@ export default function App() {
           />
         </Page>
       </div>
-      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsDialog open={showSettings} initialTab={settingsTab} onClose={() => setShowSettings(false)} />
     </MotionConfig>
   );
 }

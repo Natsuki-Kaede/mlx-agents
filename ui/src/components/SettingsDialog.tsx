@@ -2,26 +2,31 @@ import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { AgentsSection } from "./settings/AgentsSection";
 import { GeneralSection } from "./settings/GeneralSection";
 import { MemorySection } from "./settings/MemorySection";
 import { ModelsSection } from "./settings/ModelsSection";
 import { ErrorNote, Glass, Segmented, spring } from "./ui";
 
-type Tab = "general" | "models" | "memory";
-const TABS: { value: Tab; label: string; render: (onError: (e: string | null) => void) => ReactNode }[] = [
+export type SettingsTab = "general" | "agents" | "models" | "memory";
+const TABS: { value: SettingsTab; label: string; render: (onError: (e: string | null) => void) => ReactNode }[] = [
   { value: "general", label: "通用", render: (onError) => <GeneralSection onError={onError} /> },
+  { value: "agents", label: "Agents", render: (onError) => <AgentsSection onError={onError} /> },
   { value: "models", label: "模型", render: (onError) => <ModelsSection onError={onError} /> },
   { value: "memory", label: "记忆", render: (onError) => <MemorySection onError={onError} /> },
 ];
 
-/** App settings: workspace, models, long-term memory. */
-export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>("general");
+/** App settings: workspace, agents, models, long-term memory. */
+export function SettingsDialog({ open, initialTab, onClose }: { open: boolean; initialTab?: SettingsTab; onClose: () => void }) {
+  const [tab, setTab] = useState<SettingsTab>("general");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) setError(null);
   }, [open, tab]);
+  useEffect(() => {
+    if (open && initialTab) setTab(initialTab);
+  }, [open, initialTab]);
 
   return createPortal(
     <AnimatePresence>

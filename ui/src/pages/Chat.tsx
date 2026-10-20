@@ -3,8 +3,11 @@ import { ArrowDown, ImageIcon, MessageSquarePlus, ScanSearch, Trash2 } from "luc
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  AGENTS_CHANGED,
+  DEFAULT_AGENT,
   api,
   runEvents,
+  type AgentProfile,
   type ChatSettings,
   type ChatSummary,
   type ChatTurn,
@@ -37,7 +40,7 @@ const DEFAULT_PARAMS: VlmParams = {
 };
 
 // Web, files and commands are opt-in per chat; image generation is offered unless switched off.
-const DEFAULT_SETTINGS: ChatSettings = { web: false, image: true, files: false, exec: false, autoApprove: [], model: null };
+const DEFAULT_SETTINGS: ChatSettings = { web: false, image: true, files: false, exec: false, autoApprove: [], model: null, agent: null };
 const ASPECTS: Record<string, number> = { "1:1": 1, "3:4": 3 / 4, "4:3": 4 / 3, "9:16": 9 / 16, "16:9": 16 / 9 };
 
 const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -99,6 +102,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   const [showPanel, setShowPanel] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [models, setModels] = useState<ModelList | null>(null);
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
   const { ref: list, contentRef, atBottom, scrollToBottom } = useStickToBottom();
   const stream = useRef<AbortController | null>(null);
   const chatIdRef = useRef<string | null>(ui.chatId);
@@ -110,6 +114,14 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
 
   const refreshChats = useCallback(() => api.chats().then(setChats).catch(() => undefined), []);
   const refreshModels = useCallback(() => api.models().then(setModels).catch(() => undefined), []);
+  const refreshAgents = useCallback(() => api.agents().then(setAgents).catch(() => undefined), []);
+  const agentOf = (id?: string | null) => agents.find((a) => a.id === (id ?? DEFAULT_AGENT)) ?? agents.find((a) => a.id === DEFAULT_AGENT);
+  const agent = agentOf(settings.agent);
+
+  useEffect(() => {
+    window.addEventListener(AGENTS_CHANGED, refreshAgents);
+    return () => window.removeEventListener(AGENTS_CHANGED, refreshAgents);
+  }, [refreshAgents]);
 
   /** Load a chat from the backend, which owns it; ignored if another chat was opened meanwhile. */
   const loadChat = useCallback(async (id: string) => {
@@ -184,6 +196,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   useEffect(() => {
     refreshChats();
     refreshModels();
+    refreshAgents();
     if (chatId) openChat(chatId);
     // Restore once on mount; later changes go through openChat.
   }, []);
@@ -217,9 +230,10 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     setTurns([...before, { role: "user", mode: "chat", content: text, attachments: files }]);
     scrollToBottom();
     try {
-      const { autoApprove, model, ...permissions } = settings;
+      const { autoApprove, model, agent: agentId, ...permissions } = settings;
       const info = await api.startRun({
         model: model ?? null,
+        agent: agentId ?? null,
         chat_id: id,
         content: text,
         attachments: files.map((a) => a.id),
@@ -243,6 +257,9 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     setSettings(next);
     if (chatId && turns.length) api.patchChatSettings(chatId, next).catch((e) => setError(`设置未能保存：${errorText(e)}`));
   };
+
+  // An agent brings its own tools and model; auto-approvals already granted in this chat stay.
+  const chooseAgent = (a: AgentProfile) => changeSettings({ ...settings, ...a.permissions, agent: a.id, model: a.model ?? settings.model ?? null });
 
   const actions: ChatActions = {
     useAsBase: (file) => {
@@ -293,7 +310,10 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
               onClick={() => openChat(c.id)}
               className={`w-full rounded-2xl px-3 py-2.5 text-left transition-colors ${c.id === chatId ? "glass glass-strong" : "hover:bg-[var(--glass-fill)]"}`}
             >
-              <div className="truncate pr-6 text-[13px] font-medium">{c.title}</div>
+              <div className="truncate pr-6 text-[13px] font-medium">
+                {c.agent && c.agent !== DEFAULT_AGENT && <span className="mr-1">{agentOf(c.agent)?.icon}</span>}
+                {c.title}
+              </div>
               <div className="ink-faint mt-0.5 text-[11px] tabular-nums">
                 {when(c.updated)} · {Math.ceil(c.turns / 2)} 轮
               </div>
@@ -347,7 +367,23 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
                         今天要做点什么？
                       </div>
                       <div className="ink-soft mt-2 text-sm leading-relaxed">
-                        直接说需求：问问题、联网查资料、看图看视频、画图改图、读写文件、运行命令。多步任务会先列计划再逐步执行；写文件和运行命令前会先请你批准。
+                        选一个 agent，直接说需求。多步任务会先列计划再逐步执行；写文件、运行命令前会先请你批准。
+                      </div>
+                      <div className="mt-6 grid grid-cols-2 gap-2 text-left">
+                        {agents.map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => chooseAgent(a)}
+                            className={`glass rounded-2xl px-3.5 py-3 text-left transition-shadow ${a.id === agent?.id ? "ring-2 ring-[var(--accent)]" : "hover:bg-[var(--glass-fill-strong)]"}`}
+                          >
+                            <div className="flex items-center gap-2 text-[13px] font-medium">
+                              <span className="text-base leading-none">{a.icon}</span>
+                              <span className="truncate">{a.name}</span>
+                            </div>
+                            <div className="ink-soft mt-1 line-clamp-2 text-[11px] leading-snug">{a.description}</div>
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </motion.div>
@@ -497,6 +533,10 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             models={models?.models ?? []}
             defaultModel={models?.default_chat ?? null}
             onRefreshModels={refreshModels}
+            agents={agents}
+            agent={agent}
+            onAgent={chooseAgent}
+            onRefreshAgents={refreshAgents}
           />
         </div>
       </div>

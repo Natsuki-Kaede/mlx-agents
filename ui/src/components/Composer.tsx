@@ -1,7 +1,8 @@
 import { motion } from "motion/react";
 import { ArrowUp, Film, History, Paperclip, SlidersHorizontal, Square, X } from "lucide-react";
 import { useRef } from "react";
-import type { ChatSettings, ModelInfo, Reasoning, Upload } from "../api";
+import type { AgentProfile, ChatSettings, ModelInfo, Reasoning, Upload } from "../api";
+import { AgentMenu } from "./AgentMenu";
 import { ModelMenu } from "./ModelMenu";
 import { ReasoningMenu } from "./ReasoningMenu";
 import { ToolsMenu } from "./ToolsMenu";
@@ -27,6 +28,10 @@ export function Composer(props: {
   models: ModelInfo[];
   defaultModel: string | null;
   onRefreshModels: () => void;
+  agents: AgentProfile[];
+  agent: AgentProfile | undefined;
+  onAgent: (a: AgentProfile) => void;
+  onRefreshAgents: () => void;
 }) {
   const { input, attachments, running } = props;
   const fileInput = useRef<HTMLInputElement>(null);
@@ -84,6 +89,7 @@ export function Composer(props: {
       <div className="flex min-w-0 items-center gap-1">
         <Button variant="ghost" className="px-2.5 md:hidden" title="历史对话" icon={<History className="size-5" />} onClick={props.onShowHistory} />
         <Button variant="ghost" className="px-2.5" title="附加图片或视频" loading={props.uploading} icon={<Paperclip className="size-5" />} onClick={() => fileInput.current?.click()} />
+        <AgentMenu agents={props.agents} current={props.agent} onChange={props.onAgent} onOpen={props.onRefreshAgents} />
         <ToolsMenu value={props.settings} onChange={props.onSettings} />
         <ModelMenu
           models={props.models}
