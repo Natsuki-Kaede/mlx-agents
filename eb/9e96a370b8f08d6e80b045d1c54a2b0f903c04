@@ -1,0 +1,25 @@
+.gitignore
+  s_269b95d29ae1c3::t_75bc5db1f0f3e7 1-27
+.python-version
+  s_269b95d29ae1c3::t_d63223f6affb50 1
+pyproject.toml
+  s_269b95d29ae1c3::t_a4698b2bc2be0e 1-35
+uv.lock
+  s_269b95d29ae1c3::t_27a514a8cb5508 1-1573
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb9e96a370b8f08d6e80b045d1c54a2b0f903c04",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
