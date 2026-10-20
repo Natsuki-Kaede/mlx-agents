@@ -1,5 +1,18 @@
 export type Upload = { id: string; kind: "image" | "video"; url: string };
-export type Status = { loaded: "image" | "vlm" | null; busy: string | null; pending: number; active_gb: number };
+export type Status = { loaded: string | null; loaded_kind: "chat" | "image" | null; busy: string | null; pending: number; active_gb: number };
+export type ModelInfo = {
+  id: string;
+  kind: "chat" | "image";
+  runtime: "mlx-lm" | "mlx-vlm" | "mflux";
+  vision: boolean;
+  model_type: string;
+  bits: number | null;
+  size_gb: number;
+  supported: boolean;
+  note: string;
+};
+export type ModelDownload = { repo: string; id: string; status: "running" | "done" | "error"; total: number; done: number; error: string | null };
+export type ModelList = { models: ModelInfo[]; default_chat: string | null; default_image: string | null; downloads: ModelDownload[] };
 export type Reasoning = "off" | "low" | "medium" | "high";
 export type VlmParams = {
   max_tokens: number;
@@ -50,7 +63,7 @@ export type Job = {
 /** Per-chat switches: which tool groups the agent may use, and which approvals it may skip. */
 export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean };
 export type ApprovalKind = "write" | "exec";
-export type ChatSettings = Permissions & { autoApprove?: ApprovalKind[] };
+export type ChatSettings = Permissions & { autoApprove?: ApprovalKind[]; model?: string | null };
 
 export type PlanStep = { text: string; status: "pending" | "in_progress" | "done" };
 export type ToolEvent = {
@@ -111,7 +124,7 @@ export type SavedChat = { title: string; turns: ChatTurn[]; settings?: Partial<C
 export type ChatSummary = { id: string; title: string; updated: number; turns: number };
 export type RunInfo = { id: string; chat_id: string; status: string; events: number; created: number };
 export type RunEvent = { seq: number } & (
-  | { type: "status"; status: string }
+  | { type: "status"; status: string; note?: string }
   | { type: "thinking" | "answer"; text: string; tokens: TokenCounts }
   | { type: "tool"; tool: ToolEvent }
   | { type: "plan"; plan: PlanStep[] }
@@ -119,7 +132,7 @@ export type RunEvent = { seq: number } & (
   | { type: "end"; status: "done" | "error" | "cancelled"; stats: VlmStats & { tokens?: TokenCounts }; error: string | null }
 );
 export type Memory = { id: string; text: string; created: number };
-export type AppSettings = { workspace: string; workspace_resolved: string };
+export type AppSettings = { workspace: string; workspace_resolved: string; chat_model?: string; image_model?: string };
 
 export const FIELD_LABELS: Record<string, string> = {
   subject: "主体",
@@ -181,6 +194,7 @@ export const api = {
     permissions: Permissions;
     auto_approve: ApprovalKind[];
     system: string;
+    model: string | null;
   }) => request<RunInfo>("/api/runs", json(body)),
   cancelRun: (id: string) => request<{ id: string }>(`/api/runs/${id}/cancel`, { method: "POST" }),
   approve: (id: string, tool_id: string, decision: "allow" | "always" | "deny") =>
@@ -189,7 +203,9 @@ export const api = {
   addMemory: (text: string) => request<Memory>("/api/memory", json({ text })),
   deleteMemory: (id: string) => request<{ id: string }>(`/api/memory/${id}`, { method: "DELETE" }),
   settings: () => request<AppSettings>("/api/settings"),
-  saveSettings: (patch: { workspace?: string }) => request<AppSettings>("/api/settings", send("PUT", patch)),
+  saveSettings: (patch: { workspace?: string; chat_model?: string; image_model?: string }) => request<AppSettings>("/api/settings", send("PUT", patch)),
+  models: () => request<ModelList>("/api/models"),
+  downloadModel: (repo: string) => request<ModelDownload>("/api/models/download", json({ repo })),
 };
 
 /** Read a text/event-stream response body and yield each `data:` payload as JSON (comments are skipped). */

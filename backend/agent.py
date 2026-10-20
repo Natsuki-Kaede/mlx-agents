@@ -6,7 +6,6 @@ window or switching chats never loses work. Writes and commands wait for the use
 auto-approves them. Long tasks keep the context bounded by trimming older tool results.
 """
 
-import re
 import threading
 import time
 import traceback
@@ -14,8 +13,6 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-
-from mlx_vlm.tools.parsers.qwen3_coder import parse_tool_call
 
 from backend import store
 from backend.tools import TOOLS, Tool, ToolError, available
@@ -81,19 +78,6 @@ def _compact(convo: list[dict]) -> None:
         content = str(convo[i]["content"])
         if len(content) > TRIMMED_TOOL_CHARS:
             convo[i]["content"] = content[:TRIMMED_TOOL_CHARS] + "\n…（较早的工具结果已截断，需要时可重新调用工具）"
-
-
-TOOL_BLOCK = re.compile(r"<tool_call>(.*?)(?:</tool_call>|$)", re.S)
-
-
-def parse_tool_calls(text: str, schemas) -> list[dict]:
-    calls = []
-    for block in TOOL_BLOCK.findall(text):
-        try:
-            calls.append(parse_tool_call(block, schemas))
-        except (ValueError, SyntaxError):
-            continue  # a malformed call is dropped; the model then answers without that tool's result
-    return calls
 
 
 @dataclass
@@ -177,7 +161,7 @@ class Agent:
 
     def start(self, request: dict) -> Run:
         """Queue a run on the MLX thread. `request`: chat_id, content, attachments ({id, kind, url, path}),
-        params, permissions {web, image, files, exec}, auto_approve, system."""
+        params, permissions {web, image, files, exec}, auto_approve, system, model (chat model id)."""
         run = Run(id=uuid.uuid4().hex[:12], chat_id=request["chat_id"], request=request, auto_approve=set(request.get("auto_approve") or []))
         # Save the user turn now, so a queued run already shows in the chat list and on reopening the chat.
         before = store.load_chat(run.chat_id) or {"turns": []}
@@ -187,7 +171,7 @@ class Agent:
 
         def add_user(c: dict) -> dict:
             title = c.get("title") or (request["content"].replace("\n", " ").strip() or "图片 / 视频对话")[:28]
-            settings = (c.get("settings") or {}) | (request.get("permissions") or {}) | {"autoApprove": sorted(run.auto_approve)}
+            settings = (c.get("settings") or {}) | (request.get("permissions") or {}) | {"autoApprove": sorted(run.auto_approve), "model": request.get("model")}
             return c | {"title": title, "turns": [*c["turns"], user_turn], "settings": settings}
 
         store.update_chat(run.chat_id, add_user)
@@ -234,13 +218,17 @@ class Agent:
                 if round_ and answer and not answer.endswith("\n\n"):
                     emit_text("answer", "\n\n", tokens)  # keep text from separate rounds in separate paragraphs
                     answer += "\n\n"
-                stats = self.engine.stream(convo, images, videos, req["params"], emit_text, tools=offered, token_base=tokens, cancelled=run.cancelled)
+                stats = self.engine.stream(
+                    convo, images, videos, req["params"], emit_text, tools=offered, token_base=tokens, cancelled=run.cancelled, model_id=req.get("model"),
+                )
+                if offered and not stats["tools_supported"] and round_ == 0:
+                    run.emit({"type": "status", "status": "running", "note": f"{stats['model']} 没有工具调用格式，这次只能直接回答"})
                 tokens, answer = stats["tokens"], answer + stats["text"]
                 thinking += ("\n\n" if thinking and stats["thinking"] else "") + stats["thinking"]
                 peak, load = max(peak, stats["peak_mlx_gb"]), load + stats["load_seconds"]
                 if stats["stopped"]:
                     break
-                calls = parse_tool_calls(stats["tool_text"], offered) if offered else []
+                calls = stats["tool_calls"]
                 if not calls:
                     break
                 convo.append({"role": "assistant", "content": stats["text"], "tool_calls": [{"type": "function", "function": c} for c in calls]})
@@ -256,7 +244,7 @@ class Agent:
             traceback.print_exc()
 
         run.status = "error" if error else "cancelled" if run.cancelled() else "done"
-        final_stats = {k: v for k, v in stats.items() if k not in ("text", "thinking", "tool_text", "stopped")}
+        final_stats = {k: v for k, v in stats.items() if k not in ("text", "thinking", "tool_calls", "tools_supported", "stopped")}
         final_stats |= {"seconds": round(time.time() - started, 1), "load_seconds": round(load, 1), "peak_mlx_gb": peak, "tokens": tokens}
         note = f"\n\n（出错：{error}）" if error else "\n\n（已停止）" if run.status == "cancelled" else ""
         assistant_turn = {

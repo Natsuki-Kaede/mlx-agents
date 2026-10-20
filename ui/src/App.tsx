@@ -16,7 +16,6 @@ const TABS: { id: Tab; label: string; icon: typeof Images }[] = [
 ];
 
 const BUSY_LABEL: Record<string, string> = { agent: "执行中", image: "生图中" };
-const MODEL_LABEL: Record<string, string> = { image: "生图模型", vlm: "对话模型" };
 
 function readPref<T extends string>(key: string, fallback: T): T {
   try {
@@ -69,8 +68,8 @@ function StatusPill({ status, offline }: { status: Status | null; offline: boole
       </span>
       <span className="font-medium">{text}</span>
       {status && (
-        <span className="ink-soft hidden tabular-nums sm:inline">
-          {status.loaded ? `${MODEL_LABEL[status.loaded]} · ` : ""}
+        <span className="ink-soft hidden max-w-64 truncate tabular-nums sm:inline">
+          {status.loaded ? `${status.loaded} · ` : ""}
           {status.active_gb.toFixed(1)} GB
         </span>
       )}
@@ -176,7 +175,7 @@ export default function App() {
             <button type="button" title={`主题：${theme === "system" ? "跟随系统" : theme === "light" ? "浅色" : "深色"}`} onClick={cycleTheme} className="glass grid size-9 place-items-center rounded-full">
               <ThemeIcon className="size-4" />
             </button>
-            <button type="button" title="工作目录与长期记忆" onClick={() => setShowSettings(true)} className="glass grid size-9 place-items-center rounded-full">
+            <button type="button" title="设置" onClick={() => setShowSettings(true)} className="glass grid size-9 place-items-center rounded-full">
               <Settings className="size-4" />
             </button>
           </div>

@@ -1,5 +1,5 @@
 """MLX Agents backend API: agent runs (chat with tools, images, files and commands), uploads, image job progress,
-the gallery, long-term memory and settings.
+models and downloads, the gallery, long-term memory and settings.
 
 Served only by the desktop client (desktop/app.py), which runs it on a loopback port behind a token gate.
 """
@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend import store
+from backend import models, store
 from backend.agent import Agent
 from backend.engine import OUTPUTS, ROOT, UPLOADS, VIDEO_EXTS, Engine
 
@@ -56,6 +56,7 @@ class RunRequest(BaseModel):
     permissions: Permissions = Permissions()
     auto_approve: list[Literal["write", "exec"]] = []
     system: str = ""
+    model: str | None = None  # chat model id (folder under models/); None uses the default
 
 
 class Decision(BaseModel):
@@ -126,11 +127,17 @@ def start_run(req: RunRequest):
         raise HTTPException(400, "消息为空")
     if agent.active_run(req.chat_id):
         raise HTTPException(409, "这段对话还有任务在进行")
+    try:
+        model = models.resolve("chat", req.model)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     attachments = []
     for name in req.attachments:
         path = upload_path(name)
         kind = "video" if path.suffix.lower() in VIDEO_EXTS else "image"
         attachments.append({"id": name, "kind": kind, "url": f"/media/uploads/{name}", "path": str(path)})
+    if attachments and not model.vision:
+        raise HTTPException(400, f"{model.id} 是纯文本模型，看不了图片或视频；请换一个视觉模型")
     request = req.model_dump() | {"attachments": attachments, "content": req.content.strip() or "请描述这个内容。"}
     request["permissions"] = req.permissions.model_dump()
     return agent.start(request).public()
@@ -244,6 +251,32 @@ def delete_chat(chat_id: str):
     return {"id": chat_id}
 
 
+# ----- models -----
+
+
+@app.get("/api/models")
+def list_models():
+    chat, image = models.default("chat"), models.default("image")
+    return {
+        "models": [m.public() for m in models.scan()],
+        "default_chat": chat.id if chat else None,
+        "default_image": image.id if image else None,
+        "downloads": [d.public() for d in models.downloads.values()],
+    }
+
+
+class DownloadRequest(BaseModel):
+    repo: str
+
+
+@app.post("/api/models/download")
+def download_model(req: DownloadRequest):
+    try:
+        return models.start_download(req.repo).public()
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 # ----- gallery, memory, settings -----
 
 
@@ -281,6 +314,8 @@ def delete_memory(memory_id: str):
 
 class SettingsPatch(BaseModel):
     workspace: str | None = None
+    chat_model: str | None = None
+    image_model: str | None = None
 
 
 @app.get("/api/settings")
@@ -298,6 +333,13 @@ def put_settings(patch: SettingsPatch):
             raise HTTPException(400, "这个路径不是文件夹")
         if not path.parent.exists():
             raise HTTPException(400, "上一级文件夹不存在")
+    for kind in ("chat", "image"):
+        model_id = getattr(patch, f"{kind}_model")
+        if model_id is not None:
+            try:
+                models.resolve(kind, model_id)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
     store.update_settings({k: v for k, v in patch.model_dump().items() if v is not None})
     return get_settings()
 

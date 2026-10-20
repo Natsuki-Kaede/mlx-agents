@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Brain, Check, ChevronUp } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Reasoning } from "../api";
 import { spring } from "./ui";
+import { useDismiss } from "./useDismiss";
 
 export const REASONING: { value: Reasoning; label: string; hint: string }[] = [
   { value: "off", label: "关闭", hint: "直接回答，最快" },
@@ -17,17 +18,7 @@ export function ReasoningMenu({ value, onChange }: { value: Reasoning; onChange:
   const root = useRef<HTMLDivElement>(null);
   const current = REASONING.find((r) => r.value === value) ?? REASONING[0];
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  useDismiss(open, useCallback(() => setOpen(false), []), root);
 
   // The wrapper is not positioned: the menu anchors to the input bar, so it stays on screen at narrow widths.
   return (

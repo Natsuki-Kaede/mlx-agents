@@ -197,7 +197,7 @@ def _generate_image(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     seed = int(args["seed"]) if args.get("seed") not in (None, "", -1) else None
     job = ctx.engine.generate_inline(
         {"prompt": prompt, "width": width, "height": height, "steps": steps, "seed": seed, "step_cache": 0,
-         "init_image": reference, "image_strength": strength, "source": {"agent": True}},
+         "init_image": reference, "image_strength": strength, "source": {"agent": True}, "model": None},
         on_start=lambda job_id: ctx.update(job=job_id),
         cancelled=ctx.cancelled,
     )
@@ -414,7 +414,7 @@ TOOLS: dict[str, Tool] = {
              _params({"query": {"type": "string", "description": "Search keywords"}}, ["query"]), _web_search),
         Tool("read_page", "web", "Fetch a web page and return its main text (truncated). Use after web_search to read a promising result in full.",
              _params({"url": {"type": "string", "description": "http(s) URL to read"}}, ["url"]), _read_page),
-        Tool("generate_image", "image", "Generate an image with the local Qwen-Image model. Takes several minutes. Write a detailed, concrete prompt (subject, scene, composition, lighting, style); if the user gives an exact prompt, use it verbatim.",
+        Tool("generate_image", "image", "Generate an image with the local image model. Takes several minutes. Write a detailed, concrete prompt (subject, scene, composition, lighting, style); if the user gives an exact prompt, use it verbatim.",
              _params({
                  "prompt": {"type": "string", "description": "Detailed image description"},
                  "aspect_ratio": {"type": "string", "enum": list(ASPECTS), "description": "Defaults to the reference image's shape, else 1:1"},

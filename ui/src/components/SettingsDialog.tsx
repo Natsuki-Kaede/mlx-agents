@@ -1,41 +1,27 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Brain, FolderOpen, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { api, type AppSettings, type Memory } from "../api";
-import { Button, ErrorNote, Glass, Label, spring } from "./ui";
+import { GeneralSection } from "./settings/GeneralSection";
+import { MemorySection } from "./settings/MemorySection";
+import { ModelsSection } from "./settings/ModelsSection";
+import { ErrorNote, Glass, Segmented, spring } from "./ui";
 
-/** Workspace folder and long-term memory. */
+type Tab = "general" | "models" | "memory";
+const TABS: { value: Tab; label: string; render: (onError: (e: string | null) => void) => ReactNode }[] = [
+  { value: "general", label: "通用", render: (onError) => <GeneralSection onError={onError} /> },
+  { value: "models", label: "模型", render: (onError) => <ModelsSection onError={onError} /> },
+  { value: "memory", label: "记忆", render: (onError) => <MemorySection onError={onError} /> },
+];
+
+/** App settings: workspace, models, long-term memory. */
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [workspace, setWorkspace] = useState("");
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [draft, setDraft] = useState("");
+  const [tab, setTab] = useState<Tab>("general");
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    setError(null);
-    setSaved(false);
-    api
-      .settings()
-      .then((s) => {
-        setSettings(s);
-        setWorkspace(s.workspace);
-      })
-      .catch((e) => setError(String(e)));
-    api.memories().then(setMemories).catch((e) => setError(String(e)));
-  }, [open]);
-
-  const run = async (fn: () => Promise<void>) => {
-    setError(null);
-    try {
-      await fn();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+    if (open) setError(null);
+  }, [open, tab]);
 
   return createPortal(
     <AnimatePresence>
@@ -47,7 +33,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
             exit={{ opacity: 0, y: 16, scale: 0.97 }}
             transition={spring}
             onClick={(e) => e.stopPropagation()}
-            className="glass-solid scroll-soft max-h-[88dvh] w-full max-w-xl space-y-6 overflow-y-auto p-6"
+            className="glass-solid flex max-h-[88dvh] w-full max-w-2xl flex-col gap-4 p-6"
           >
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">设置</div>
@@ -55,78 +41,8 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
                 <X className="size-4" />
               </button>
             </div>
-
-            <section className="space-y-2">
-              <Label>
-                <span className="inline-flex items-center gap-1.5">
-                  <FolderOpen className="size-4" /> 工作目录
-                </span>
-              </Label>
-              <div className="flex gap-2">
-                <input className="field font-mono text-[13px]" value={workspace} onChange={(e) => setWorkspace(e.target.value)} placeholder="~/MLX Agents" />
-                <Button
-                  variant="primary"
-                  onClick={() =>
-                    run(async () => {
-                      const s = await api.saveSettings({ workspace });
-                      setSettings(s);
-                      setWorkspace(s.workspace);
-                      setSaved(true);
-                    })
-                  }
-                >
-                  保存
-                </Button>
-              </div>
-              <div className="ink-faint text-xs leading-relaxed">
-                Agent 的文件工具和命令只能在这个目录里工作。{settings && `当前：${settings.workspace_resolved}`}
-                {saved && " · 已保存"}
-              </div>
-            </section>
-
-            <section className="space-y-2">
-              <Label hint={`${memories.length} 条`}>
-                <span className="inline-flex items-center gap-1.5">
-                  <Brain className="size-4" /> 长期记忆
-                </span>
-              </Label>
-              <div className="ink-faint text-xs">每段对话都会带上这些内容。Agent 也会在你表达偏好时自己记住。</div>
-              <div className="space-y-1.5">
-                {memories.map((m) => (
-                  <motion.div key={m.id} layout className="glass flex items-start gap-2 rounded-xl px-3 py-2 text-[13px]">
-                    <span className="flex-1 leading-relaxed">{m.text}</span>
-                    <button
-                      type="button"
-                      title="删除"
-                      onClick={() => run(async () => {
-                        await api.deleteMemory(m.id);
-                        setMemories((l) => l.filter((x) => x.id !== m.id));
-                      })}
-                      className="ink-soft grid size-7 shrink-0 place-items-center rounded-full hover:bg-[var(--glass-fill-strong)]"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </motion.div>
-                ))}
-                {!memories.length && <div className="ink-faint py-2 text-center text-xs">还没有记忆</div>}
-              </div>
-              <div className="flex gap-2">
-                <input className="field text-[13px]" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="例如：生图默认用 16:9、偏好水彩风格" />
-                <Button
-                  icon={<Plus className="size-4" />}
-                  disabled={!draft.trim()}
-                  onClick={() =>
-                    run(async () => {
-                      const m = await api.addMemory(draft.trim());
-                      setMemories((l) => [...l, m]);
-                      setDraft("");
-                    })
-                  }
-                >
-                  添加
-                </Button>
-              </div>
-            </section>
+            <Segmented id="settings-tab" options={TABS.map(({ value, label }) => ({ value, label }))} value={tab} onChange={setTab} />
+            <div className="scroll-soft -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">{TABS.find((t) => t.value === tab)!.render(setError)}</div>
             <ErrorNote error={error} />
           </Glass>
         </motion.div>

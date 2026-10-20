@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from "motion/react";
 import { FolderOpen, Globe, ImageIcon, ShieldCheck, Terminal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ApprovalKind, ChatSettings, Permissions } from "../api";
 import { Toggle, spring } from "./ui";
+import { useDismiss } from "./useDismiss";
 
 const ITEMS: { key: keyof Permissions; label: string; hint: string; icon: typeof Globe }[] = [
   { key: "web", label: "联网", hint: "DuckDuckGo 搜索并阅读网页；搜索词会发到外网", icon: Globe },
@@ -23,17 +24,7 @@ export function ToolsMenu({ value, onChange }: { value: ChatSettings; onChange: 
   const auto = value.autoApprove ?? [];
   const enabled = ITEMS.filter((i) => value[i.key]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  useDismiss(open, useCallback(() => setOpen(false), []), root);
 
   // The wrapper is not positioned: the menu anchors to the input bar, so it stays on screen at narrow widths.
   return (

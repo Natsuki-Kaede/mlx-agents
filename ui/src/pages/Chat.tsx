@@ -8,6 +8,7 @@ import {
   type ChatSettings,
   type ChatSummary,
   type ChatTurn,
+  type ModelList,
   type OutputMeta,
   type RunEvent,
   type RunInfo,
@@ -36,7 +37,7 @@ const DEFAULT_PARAMS: VlmParams = {
 };
 
 // Web, files and commands are opt-in per chat; image generation is offered unless switched off.
-const DEFAULT_SETTINGS: ChatSettings = { web: false, image: true, files: false, exec: false, autoApprove: [] };
+const DEFAULT_SETTINGS: ChatSettings = { web: false, image: true, files: false, exec: false, autoApprove: [], model: null };
 const ASPECTS: Record<string, number> = { "1:1": 1, "3:4": 3 / 4, "4:3": 4 / 3, "9:16": 9 / 16, "16:9": 16 / 9 };
 
 const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -94,8 +95,10 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   const [uploading, setUploading] = useState(false);
   const [run, setRun] = useState<RunInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [models, setModels] = useState<ModelList | null>(null);
   const { ref: list, contentRef, atBottom, scrollToBottom } = useStickToBottom();
   const stream = useRef<AbortController | null>(null);
   const chatIdRef = useRef<string | null>(ui.chatId);
@@ -106,6 +109,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   const running = !!run && run.chat_id === chatId;
 
   const refreshChats = useCallback(() => api.chats().then(setChats).catch(() => undefined), []);
+  const refreshModels = useCallback(() => api.models().then(setModels).catch(() => undefined), []);
 
   /** Load a chat from the backend, which owns it; ignored if another chat was opened meanwhile. */
   const loadChat = useCallback(async (id: string) => {
@@ -127,6 +131,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       try {
         for await (const ev of runEvents(info.id, 0, controller.signal)) {
           if (ev.type === "status") setRun((r) => r && { ...r, status: ev.status });
+          if (ev.type === "status" && ev.note) setNotice(ev.note);
           if (ev.type === "auto_approve") setSettings((s) => ({ ...s, autoApprove: ev.auto_approve }));
           if (ev.type === "end" && ev.error) setError(ev.error);
           live = applyEvent(live, ev);
@@ -152,6 +157,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       chatIdRef.current = id;
       setRun(null);
       setError(null);
+      setNotice(null);
       setUi((u) => ({ ...u, chatId: id }));
       setShowHistory(false);
       if (!id) {
@@ -177,6 +183,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
 
   useEffect(() => {
     refreshChats();
+    refreshModels();
     if (chatId) openChat(chatId);
     // Restore once on mount; later changes go through openChat.
   }, []);
@@ -205,12 +212,14 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     setInput("");
     setAttachments([]);
     setError(null);
+    setNotice(null);
     const before = turns;
     setTurns([...before, { role: "user", mode: "chat", content: text, attachments: files }]);
     scrollToBottom();
     try {
-      const { autoApprove, ...permissions } = settings;
+      const { autoApprove, model, ...permissions } = settings;
       const info = await api.startRun({
+        model: model ?? null,
         chat_id: id,
         content: text,
         attachments: files.map((a) => a.id),
@@ -439,6 +448,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
           </div>
 
           <ErrorNote error={error} />
+          {notice && <div className="ink-soft glass rounded-2xl px-4 py-2.5 text-xs">{notice}</div>}
 
           <AnimatePresence>
             {showPanel && (
@@ -484,6 +494,9 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             onReasoning={(v) => setParam("reasoning", v)}
             onTogglePanel={() => setShowPanel((v) => !v)}
             onShowHistory={() => setShowHistory(true)}
+            models={models?.models ?? []}
+            defaultModel={models?.default_chat ?? null}
+            onRefreshModels={refreshModels}
           />
         </div>
       </div>

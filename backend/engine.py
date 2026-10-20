@@ -1,14 +1,18 @@
-"""Model engine: one MLX thread that owns both models and runs every operation in order.
+"""Model engine: one MLX thread that owns the models and runs every operation in order.
 
 MLX streams belong to the thread that created them and weights are evaluated lazily, so loading and all
-inference happen on this single thread. Only one model is resident at a time: the image model
-(Qwen-Image-2.1 UC, ~5 GB once warm) and the chat/vision model (Qwen3.5-9B abliterated, ~6 GB) do not
-both fit a 16 GB Mac with working memory, so switching unloads the other first.
+inference happen on this single thread. Only one model is resident at a time (a 9B chat model at 4 bits is
+~6 GB, an image model ~5 GB once warm; two do not fit a 16 GB Mac with working memory), so asking for a
+different model unloads the current one first.
+
+Chat models run on mlx-lm (text) or mlx-vlm (vision). Their thinking and tool-call markup differs by family;
+the format is taken from the runtime's own detection (chat template / vocabulary) when the model loads.
 """
 
 import gc
 import json
 import random
+import re
 import threading
 import time
 import traceback
@@ -27,13 +31,19 @@ from mflux.models.qwen21.qwen21_initializer import Qwen21Initializer
 from mflux.models.qwen21.variants.txt2img.qwen_image_21 import QwenImage21
 from mflux.models.qwen21.weights.qwen21_weight_definition import Qwen21WeightDefinition
 from mflux.utils.exceptions import StopImageGenerationException
+from mlx_lm import load as load_lm
+from mlx_lm import stream_generate as lm_stream_generate
+from mlx_lm.sample_utils import make_logits_processors, make_sampler
 from mlx_vlm import load as load_vlm
-from mlx_vlm import stream_generate
+from mlx_vlm import stream_generate as vlm_stream_generate
 from mlx_vlm.prompt_utils import apply_chat_template
+# Private in mlx-vlm 0.7.8 (pinned): maps a chat template to its tool-call parser, as mlx-vlm's server does.
+from mlx_vlm.tools.registry import _infer_tool_parser_from_processor, load_tool_module
+
+from backend import models
+from backend.models import ModelInfo
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE_MODEL_PATH = ROOT / "models" / "qwen-image-2.1-uc-mflux-q4"
-VLM_PATH = ROOT / "models" / "qwen3.5-9b-abliterated-mlx-4bit"
 OUTPUTS = ROOT / "outputs"
 UPLOADS = ROOT / "uploads"
 PROMPT_CACHE_SIZE = 32
@@ -95,13 +105,64 @@ class TextEncoderOnly(Qwen21WeightDefinition):
         return [c for c in Qwen21WeightDefinition.get_components() if c.name == "text_encoder"]
 
 
+@dataclass
+class ChatFormat:
+    """How a chat model marks thinking and tool calls in its output (None: the model has no such markup)."""
+
+    think_start: str | None = None
+    think_end: str | None = None
+    tool_start: str | None = None
+    tool_end: str | None = None
+    tool_parser: Callable | None = None
+
+    @classmethod
+    def for_lm(cls, tokenizer) -> "ChatFormat":
+        return cls(
+            tokenizer.think_start, tokenizer.think_end,
+            tokenizer.tool_call_start if tokenizer.has_tool_calling else None, tokenizer.tool_call_end, tokenizer.tool_parser,
+        )
+
+    @classmethod
+    def for_vlm(cls, processor) -> "ChatFormat":
+        tokenizer = getattr(processor, "tokenizer", processor)
+        vocab = tokenizer.get_vocab()
+        think = ("<think>", "</think>") if "<think>" in vocab and "</think>" in vocab else (None, None)
+        parser = _infer_tool_parser_from_processor(processor)
+        module = load_tool_module(parser) if parser else None
+        return cls(*think, *((module.tool_call_start, module.tool_call_end, module.parse_tool_call) if module else (None, None, None)))
+
+    def parse_tool_calls(self, text: str, tools: list[dict]) -> list[dict]:
+        """Tool calls in `text` (which starts at the first start marker) as {name, arguments: dict}."""
+        if not self.tool_start or not self.tool_parser:
+            return []
+        end = re.escape(self.tool_end) if self.tool_end else r"\n"
+        calls = []
+        for block in re.findall(f"{re.escape(self.tool_start)}(.*?)(?:{end}|$)", text, re.S):
+            try:
+                parsed = self.tool_parser(block.strip(), tools)
+            except Exception:  # a malformed call is dropped; the model then answers without that tool's result
+                continue
+            for call in parsed if isinstance(parsed, list) else [parsed]:
+                args = call.get("arguments") or {}
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args) if args.strip() else {}
+                    except json.JSONDecodeError:
+                        continue
+                if call.get("name"):
+                    calls.append({"name": str(call["name"]).strip(), "arguments": args if isinstance(args, dict) else {}})
+        return calls
+
+
 class Engine:
     outputs = OUTPUTS
     uploads = UPLOADS
 
     def __init__(self) -> None:
         self._thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx")
-        self._models: dict = {"image": None, "vlm": None}
+        self.resident: ModelInfo | None = None  # the one loaded model
+        self._model = None  # mflux model, or (model, tokenizer/processor) for chat
+        self._format: ChatFormat | None = None
         self._progress = _Progress()
         self._pending = 0
         self._lock = threading.Lock()
@@ -127,9 +188,9 @@ class Engine:
         return self._thread.submit(run)
 
     def status(self) -> dict:
-        loaded = next((k for k, v in self._models.items() if v is not None), None)
         return {
-            "loaded": loaded,
+            "loaded": self.resident.id if self.resident else None,
+            "loaded_kind": self.resident.kind if self.resident else None,
             "busy": self.current,
             "pending": self._pending,
             "active_gb": round(mx.get_active_memory() / 1e9, 2),
@@ -137,36 +198,39 @@ class Engine:
 
     # ----- model residency (mlx thread only) -----
 
-    def _unload(self, kind: str) -> None:
-        if self._models[kind] is not None:
-            self._models[kind] = None
+    def _unload(self) -> None:
+        if self.resident is not None:
+            self.resident, self._model, self._format = None, None, None
             gc.collect()
             mx.clear_cache()
 
-    def _image_model(self) -> QwenImage21:
-        self._unload("vlm")
-        if self._models["image"] is None:
-            model = QwenImage21(model_path=str(IMAGE_MODEL_PATH))
+    def _load(self, info: ModelInfo):
+        """Make `info` the resident model, unloading any other first."""
+        if self.resident is not None and self.resident.id == info.id:
+            return self._model
+        self._unload()
+        if info.runtime == "mflux":
+            model = QwenImage21(model_path=str(info.path))
             model.tiling_config = TilingConfig()
             model.callbacks.register(self._progress)
-            self._models["image"] = model
-        return self._models["image"]
-
-    def _vlm(self):
-        self._unload("image")
-        if self._models["vlm"] is None:
-            self._models["vlm"] = load_vlm(str(VLM_PATH))
-        return self._models["vlm"]
+        elif info.runtime == "mlx-vlm":
+            model = load_vlm(str(info.path))
+            self._format = ChatFormat.for_vlm(model[1])
+        else:
+            model = load_lm(str(info.path))
+            self._format = ChatFormat.for_lm(model[1])
+        self.resident, self._model = info, model
+        return model
 
     # ----- image generation (mlx thread only) -----
 
-    def _encode(self, qwen: QwenImage21, prompt: str) -> None:
+    def _encode(self, qwen: QwenImage21, prompt: str, model_path: Path) -> None:
         """Fill the prompt cache, loading the text encoder only when needed and freeing it right after."""
         if prompt in qwen.prompt_cache:
             return
         if qwen.text_encoder is None:
             qwen.text_encoder = Qwen21TextEncoder()
-            Qwen21Initializer.load_components(qwen, IMAGE_MODEL_PATH, TextEncoderOnly, None)
+            Qwen21Initializer.load_components(qwen, model_path, TextEncoderOnly, None)
         embeds, mask = Qwen21PromptEncoder.encode_prompt(
             prompt=prompt,
             prompt_cache=qwen.prompt_cache,
@@ -198,8 +262,9 @@ class Engine:
         job.status, job.started, job.phase = "running", time.time(), "加载模型与编码提示词"
         try:
             mx.reset_peak_memory()
-            qwen = self._image_model()
-            self._encode(qwen, p["prompt"])
+            info = models.resolve("image", p.get("model"))
+            qwen = self._load(info)
+            self._encode(qwen, p["prompt"], info.path)
             encode_seconds = time.time() - job.started
             job.phase = "生成中"
             self._progress.job = job
@@ -243,45 +308,50 @@ class Engine:
 
     # ----- chat / vision (mlx thread only) -----
 
-    def stream(self, messages, images, videos, params, emit: Emit | None, tools=None, token_base=None, cancelled=None) -> dict:
-        """Generate a reply. With reasoning on, the template pre-opens <think>, so the stream is thinking text up
-        to </think>, then the answer, then any <tool_call> blocks; they come back separately, and thinking and
-        answer text are also pushed to `emit` as they stream. Stops early when `cancelled()` turns true."""
+    def stream(self, messages, images, videos, params, emit: Emit | None, tools=None, token_base=None, cancelled=None, model_id=None) -> dict:
+        """Generate a reply with the chat model `model_id` (default model when None). The output is split into
+        thinking text, answer text and tool calls; thinking and answer text are also pushed to `emit` as they
+        stream. `tools` are offered only if the model has a tool-call format. Stops early when `cancelled()`."""
+        info = models.resolve("chat", model_id)
+        if (images or videos) and not info.vision:
+            raise ValueError(f"{info.id} 是纯文本模型，看不了图片或视频；请换一个视觉模型")
         mx.reset_peak_memory()
         start = time.time()
-        model, processor = self._vlm()
+        model, processor = self._load(info)
+        fmt = self._format
         load_seconds = time.time() - start
         level = params.get("reasoning", "off")
-        reasoning = level != "off"
-        template_kwargs = {"enable_thinking": reasoning}
-        if tools:
-            template_kwargs["tools"] = tools
-        if videos:
-            template_kwargs.update(video=videos, fps=params["fps"])
-        prompt = apply_chat_template(processor, model.config, messages, num_images=len(images), **template_kwargs)
-        max_tokens, extra = params["max_tokens"], {}
+        reasoning = level != "off" and fmt.think_end is not None
+        tools = tools if tools and fmt.tool_start else None
+        max_tokens = params["max_tokens"]
+        budget = REASONING_BUDGETS.get(level) if reasoning else None
         if reasoning:
-            budget = REASONING_BUDGETS[level]
             # max_tokens counts thinking tokens too, so the answer keeps its own allowance on top of the budget.
             max_tokens += budget or UNBOUNDED_REASONING_TOKENS
-            extra = {"enable_thinking": True} | ({"thinking_budget": budget} if budget else {})
-        split = _StreamRouter(reasoning)
+        if info.runtime == "mlx-vlm":
+            template_kwargs = {"enable_thinking": reasoning} | ({"tools": tools} if tools else {})
+            if videos:
+                template_kwargs.update(video=videos, fps=params["fps"])
+            prompt = apply_chat_template(processor, model.config, messages, num_images=len(images), **template_kwargs)
+            extra = ({"enable_thinking": True} | ({"thinking_budget": budget} if budget else {})) if reasoning else {}
+            generator = vlm_stream_generate(
+                model, processor, prompt, image=images or None, video=videos or None, max_tokens=max_tokens,
+                temperature=params["temperature"], repetition_penalty=params["repetition_penalty"],
+                fps=params["fps"], max_frames=params["max_frames"], **extra,
+            )
+        else:
+            prompt = processor.apply_chat_template(messages, tools=tools, add_generation_prompt=True, tokenize=False, enable_thinking=reasoning)
+            generator = lm_stream_generate(
+                model, processor, prompt, max_tokens=max_tokens, sampler=make_sampler(temp=params["temperature"]),
+                logits_processors=make_logits_processors(repetition_penalty=params["repetition_penalty"]),
+            )
+        # Templates that pre-open the thinking block leave the prompt inside it.
+        opened = bool(fmt.think_start and prompt.rstrip().endswith(fmt.think_start))
+        split = _StreamRouter(fmt, opened)
         tokens = dict(token_base or {"thinking": 0, "answer": 0})  # running totals, sent with each piece for live counters
         last, stopped = None, False
         try:
-            for chunk in stream_generate(
-                model,
-                processor,
-                prompt,
-                image=images or None,
-                video=videos or None,
-                max_tokens=max_tokens,
-                temperature=params["temperature"],
-                repetition_penalty=params["repetition_penalty"],
-                fps=params["fps"],
-                max_frames=params["max_frames"],
-                **extra,
-            ):
+            for chunk in generator:
                 last = chunk
                 # Each chunk is one generated token; </think> itself counts toward thinking.
                 tokens["thinking" if split.in_thinking else "answer"] += 1
@@ -300,7 +370,9 @@ class Engine:
         return {
             "text": split.answer,
             "thinking": split.thinking,
-            "tool_text": split.tool_text,
+            "tool_calls": fmt.parse_tool_calls(split.tool_text, tools) if tools else [],
+            "tools_supported": fmt.tool_start is not None,
+            "model": info.id,
             "tokens": tokens,
             "stopped": stopped,
             "seconds": round(time.time() - start, 1),
@@ -312,21 +384,21 @@ class Engine:
         }
 
 
-THINK_END = "</think>"
-TOOL_START = "<tool_call>"
-
-
-def _held_back(text: str, marker: str) -> int:
+def _held_back(text: str, marker: str | None) -> int:
     """Length of the longest tail of `text` that could be the start of `marker` split across pieces."""
+    if not marker:
+        return 0
     return next((n for n in range(len(marker) - 1, 0, -1) if text.endswith(marker[:n])), 0)
 
 
 class _StreamRouter:
-    """Route streamed text to "thinking" until </think>, then to "answer" until <tool_call>; everything from
-    <tool_call> on is collected (not streamed) for parsing. A tail that could be a split marker is held back."""
+    """Route streamed text to "thinking" until the think-end marker, then to "answer" until a tool-call start
+    marker; everything from there on is collected (not streamed) for parsing. Output that opens with the
+    think-start marker enters thinking too. A tail that could be a split marker is held back."""
 
-    def __init__(self, thinking: bool) -> None:
-        self.state = "thinking" if thinking else "answer"
+    def __init__(self, fmt: ChatFormat, opened: bool) -> None:
+        self.fmt = fmt
+        self.state = "thinking" if opened else "start"
         self.pending = ""
         self.thinking = ""
         self.answer = ""
@@ -342,24 +414,36 @@ class _StreamRouter:
             return []
         self.pending += piece
         out = []
+        if self.state == "start":
+            # Wait until it is clear whether the output opens a thinking block.
+            head = self.pending.lstrip()
+            marker = self.fmt.think_start
+            if marker and len(head) < len(marker) and marker.startswith(head):
+                return []
+            if marker and head.startswith(marker):
+                self.pending, self.state = head[len(marker):], "thinking"
+            else:
+                self.state = "answer"
         if self.state == "thinking":
-            if THINK_END not in self.pending:
-                return self._release("thinking", _held_back(self.pending, THINK_END))
-            before, self.pending = self.pending.split(THINK_END, 1)
+            end = self.fmt.think_end
+            if end not in self.pending:
+                return self._release("thinking", _held_back(self.pending, end))
+            before, self.pending = self.pending.split(end, 1)
             out += self._emit("thinking", before)
             self.state = "answer"
-        if TOOL_START in self.pending:
-            before, after = self.pending.split(TOOL_START, 1)
-            self.pending, self.state, self.tool_text = "", "tool", TOOL_START + after
+        start = self.fmt.tool_start
+        if start and start in self.pending:
+            before, after = self.pending.split(start, 1)
+            self.pending, self.state, self.tool_text = "", "tool", start + after
             return out + self._emit("answer", before)
-        return out + self._release("answer", _held_back(self.pending, TOOL_START))
+        return out + self._release("answer", _held_back(self.pending, start))
 
     def flush(self) -> list[tuple[str, str]]:
         # Generation ended mid-marker (e.g. max_tokens): whatever is held back belongs to the current state.
         if self.state == "tool":
             return []
         ready, self.pending = self.pending, ""
-        return self._emit(self.state, ready)
+        return self._emit("answer" if self.state == "start" else self.state, ready)
 
     def _release(self, kind: str, keep: int) -> list[tuple[str, str]]:
         ready, self.pending = self.pending[: len(self.pending) - keep], self.pending[len(self.pending) - keep :]
