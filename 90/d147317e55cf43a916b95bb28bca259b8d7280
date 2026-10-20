@@ -1,0 +1,33 @@
+scripts/convert_transformer.py
+  s_269b95d29ae1c3::t_a7d5fafa2f3a58 1-31
+scripts/fetch.sh
+  s_269b95d29ae1c3::t_9fb6f537df7244 1-15
+scripts/fetch_vlm.sh
+  s_cffe143f0c5c88::t_d4ed4a4ba3718c 1-11
+scripts/run_test.sh
+  s_269b95d29ae1c3::t_f0d625f52d04ca 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90d147317e55cf43a916b95bb28bca259b8d7280",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    },
+    "s_cffe143f0c5c88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a4723be-a3e0-4ba6-94db-903d02987373",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
