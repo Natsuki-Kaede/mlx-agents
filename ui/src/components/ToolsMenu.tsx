@@ -8,7 +8,7 @@ import { useDismiss } from "./useDismiss";
 const ITEMS: { key: keyof Permissions; label: string; hint: string; icon: typeof Globe }[] = [
   { key: "web", label: "联网", hint: "DuckDuckGo 搜索并阅读网页；搜索词会发到外网", icon: Globe },
   { key: "image", label: "生图", hint: "调用本地生图模型，每张需几分钟", icon: ImageIcon },
-  { key: "files", label: "文件", hint: "读写工作目录里的文件；写入前需要你批准", icon: FolderOpen },
+  { key: "files", label: "文件", hint: "在工作目录里查找、搜索、读写文件；写入前需要你批准", icon: FolderOpen },
   { key: "exec", label: "命令", hint: "在工作目录里运行命令；运行前需要你批准", icon: Terminal },
 ];
 

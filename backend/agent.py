@@ -33,7 +33,7 @@ SYSTEM = """你是 MLX Agents 里的本地 AI 助手，运行在用户自己的 
 RULES = {
     "web": "- 需要最新信息、具体数据或你不确定的事实时，先 web_search 再 read_page 阅读最相关的 1–3 个结果，基于读到的内容回答，并用 Markdown 链接 [标题](网址) 标注来源。",
     "image": "- 画图用 generate_image：用户给了现成提示词就原样使用，否则写出具体详细的提示词（主体、场景、构图、光线、风格）；图片会自动展示给用户，不要在回答里贴图片地址。\n- 以附图或作品库里的图为基础复刻、改图时设置 reference_index 或 reference_file，并按改动大小设置 strength：这个模型会牢牢保留底图的构图和光线，换场景、时间、风格等大改动用 0.05–0.15，中等改动 0.2–0.4，只做微调才用 0.5 以上；改动特别大时也可以不用底图。",
-    "files": "- 文件工具只能访问工作目录 {workspace}。处理文件前先 list_dir / read_file 了解现状；新文件用 write_file，修改用 edit_file（old_text 必须与原文完全一致）。写入前用户会审批，被拒绝就换个做法或询问用户。",
+    "files": "- 文件工具只能访问工作目录 {workspace}。处理文件前先了解现状：find_files 按文件名找、search_files 按内容搜、list_dir 看目录、read_file 读内容；新文件用 write_file，修改用 edit_file（old_text 必须与原文完全一致）。写入前用户会审批，被拒绝就换个做法或询问用户。",
     "exec": "- run_command 在工作目录 {workspace} 用 zsh 运行命令（脚本、测试、命令行工具等），运行前用户会审批；命令要能直接执行、尽量非交互，长时间任务设置合适的 timeout。",
 }
 

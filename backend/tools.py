@@ -5,6 +5,7 @@ Handlers take (ctx, args) and return (text the model sees, fields added to the t
 for failures the model should hear about. File and command tools are confined to the agent's workspace.
 """
 
+import fnmatch
 import ipaddress
 import json
 import math
@@ -30,6 +31,9 @@ SEARCH_RESULTS = 6
 PAGE_CHARS = 6000  # ~4k tokens of page text per read keeps the context within what a 16 GB Mac holds
 MAX_PAGE_BYTES = 3_000_000
 FILE_CHARS = 20000
+SEARCH_MAX_RESULTS = 100
+SEARCH_MAX_FILE_BYTES = 1_000_000
+SEARCH_SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", "target", ".cache"}
 COMMAND_OUTPUT_CHARS = 8000
 COMMAND_TIMEOUT = 120
 MAX_COMMAND_TIMEOUT = 600
@@ -264,6 +268,76 @@ def _read_file(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     return text + note, {"path": _rel(ctx, target), "lines": len(lines)}
 
 
+def _walk(ctx: ToolContext, root: Path):
+    """Files under `root`, skipping hidden folders and dependency or build output folders."""
+    for folder, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in SEARCH_SKIP_DIRS and not d.startswith("."))
+        for name in sorted(files):
+            yield Path(folder) / name
+
+
+def _search_root(ctx: ToolContext, args: dict) -> Path:
+    root = _in_workspace(ctx, _str(args, "path", required=False) or ".")
+    if not root.exists():
+        raise ToolError(f"路径不存在：{_rel(ctx, root)}")
+    return root
+
+
+def _find_files(ctx: ToolContext, args: dict) -> tuple[str, dict]:
+    pattern = _str(args, "pattern")
+    root = _search_root(ctx, args)
+    limit = min(500, int(args.get("limit") or 200))
+    # "*.py" matches by name anywhere; patterns with a slash ("src/**/*.ts") match the path from `path`.
+    hits = []
+    for file in _walk(ctx, root) if root.is_dir() else [root]:
+        rel = file.relative_to(root)
+        # "**/" may also match no folder at all, so "src/**/*.py" includes src/app.py.
+        if (fnmatch.fnmatch(str(rel), pattern) or fnmatch.fnmatch(str(rel), pattern.replace("**/", ""))) if "/" in pattern else fnmatch.fnmatch(file.name, pattern):
+            hits.append(_rel(ctx, file))
+            if len(hits) >= limit:
+                break
+    more = "\n（结果已达上限，可缩小范围）" if len(hits) >= limit else ""
+    text = ("\n".join(hits) or "没有匹配的文件") + more
+    return text, {"path": _rel(ctx, root), "count": len(hits), "output": text[:3000]}
+
+
+def _search_files(ctx: ToolContext, args: dict) -> tuple[str, dict]:
+    query = _str(args, "query")
+    root = _search_root(ctx, args)
+    glob = _str(args, "glob", required=False)
+    flags = 0 if args.get("case_sensitive") else re.IGNORECASE
+    try:
+        regex = re.compile(query if args.get("regex") else re.escape(query), flags)
+    except re.error as exc:
+        raise ToolError(f"正则表达式有误：{exc}") from exc
+    limit = min(SEARCH_MAX_RESULTS, int(args.get("limit") or 50))
+    hits, files_hit = [], set()
+    for file in _walk(ctx, root) if root.is_dir() else [root]:
+        if glob and not fnmatch.fnmatch(file.name, glob):
+            continue
+        if ctx.workspace not in file.resolve().parents:
+            continue  # a symlink leading out of the workspace
+        try:
+            if file.stat().st_size > SEARCH_MAX_FILE_BYTES:
+                continue
+            raw = file.read_bytes()
+        except OSError:
+            continue
+        if b"\0" in raw[:4096]:
+            continue  # binary
+        for number, line in enumerate(raw.decode("utf-8", "replace").splitlines(), 1):
+            if regex.search(line):
+                hits.append(f"{_rel(ctx, file)}:{number}: {line.strip()[:200]}")
+                files_hit.add(file)
+                if len(hits) >= limit:
+                    break
+        if len(hits) >= limit:
+            break
+    more = "\n（结果已达上限，可缩小范围或改用更具体的关键词）" if len(hits) >= limit else ""
+    text = ("\n".join(hits) or "没有找到匹配内容") + more
+    return text, {"path": _rel(ctx, root), "count": len(hits), "files": len(files_hit), "output": text[:3000]}
+
+
 def _write_preview(ctx: ToolContext, args: dict) -> dict:
     target = _in_workspace(ctx, _str(args, "path"))
     content = _str(args, "content", required=False)
@@ -429,6 +503,19 @@ TOOLS: dict[str, Tool] = {
         Tool("read_file", "files", "Read a text file in the workspace, with line numbers. Use offset/limit for long files.",
              _params({"path": {"type": "string"}, "offset": {"type": "integer", "description": "First line, 1-based"}, "limit": {"type": "integer", "description": "Max lines, default 400"}}, ["path"]),
              _read_file),
+        Tool("find_files", "files", "Find files in the workspace by name pattern, e.g. \"*.py\" (any folder) or \"src/**/*.ts\" (path from `path`). Skips hidden, dependency and build folders.",
+             _params({"pattern": {"type": "string", "description": "Glob pattern"}, "path": {"type": "string", "description": "Folder to search, relative to the workspace, default ."}, "limit": {"type": "integer"}}, ["pattern"]),
+             _find_files),
+        Tool("search_files", "files", "Search file contents in the workspace (like grep). Returns path:line: text for each matching line. Use it to locate code, definitions and usages before reading files.",
+             _params({
+                 "query": {"type": "string", "description": "Text to find, or a regular expression with regex=true"},
+                 "path": {"type": "string", "description": "Folder or file to search, relative to the workspace, default ."},
+                 "glob": {"type": "string", "description": "Only files whose name matches, e.g. \"*.py\""},
+                 "regex": {"type": "boolean"},
+                 "case_sensitive": {"type": "boolean"},
+                 "limit": {"type": "integer", "description": f"Max matching lines, default 50, max {SEARCH_MAX_RESULTS}"},
+             }, ["query"]),
+             _search_files),
         Tool("write_file", "files", "Create or overwrite a text file in the workspace (the user approves it first).",
              _params({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]), _write_file, approval="write", preview=_write_preview),
         Tool("edit_file", "files", "Replace an exact snippet in a workspace file (the user approves it first). Read the file first; old_text must match exactly and be unique unless replace_all.",

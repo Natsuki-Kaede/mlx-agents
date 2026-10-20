@@ -81,6 +81,7 @@ export type ToolEvent = {
   path?: string;
   lines?: number;
   count?: number;
+  files?: number;
   output?: string;
   exit_code?: number | null;
   stopped?: string | null;

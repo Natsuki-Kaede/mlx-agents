@@ -8,8 +8,10 @@ import {
   Download,
   FilePen,
   FilePlus,
+  FileSearch,
   FileText,
   FolderOpen,
+  FolderSearch,
   Globe,
   ImageIcon,
   ImagePlus,
@@ -119,6 +121,20 @@ function describe(tool: ToolEvent, job: Job | null): { icon: typeof Search; titl
       };
     case "list_dir":
       return { icon: FolderOpen, title: `列出 ${tool.path ?? a.path ?? "."}`, detail: tool.count !== undefined ? `${tool.count} 项` : "" };
+    case "find_files":
+      return {
+        icon: FolderSearch,
+        title: `查找文件 ${clip(a.pattern, 40)}`,
+        detail: tool.count !== undefined ? `${tool.count} 个` : "",
+        body: tool.output !== undefined ? <Pre>{tool.output}</Pre> : undefined,
+      };
+    case "search_files":
+      return {
+        icon: FileSearch,
+        title: `搜索内容「${clip(a.query, 36)}」${a.glob ? ` · ${String(a.glob)}` : ""}`,
+        detail: tool.count !== undefined ? `${tool.count} 处 · ${tool.files ?? 0} 个文件` : "",
+        body: tool.output !== undefined ? <Pre>{tool.output}</Pre> : undefined,
+      };
     case "read_file":
       return { icon: FileText, title: `读取 ${tool.path ?? a.path}`, detail: tool.lines !== undefined ? `${tool.lines} 行` : "" };
     case "write_file":
