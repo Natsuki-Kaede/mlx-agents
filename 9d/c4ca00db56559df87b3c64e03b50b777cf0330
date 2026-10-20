@@ -1,0 +1,27 @@
+ui/src/App.tsx
+  s_269b95d29ae1c3::t_2790c3d1c04eec 74-75
+backend/main.py
+  s_269b95d29ae1c3::t_2790c3d1c04eec 9,11,16,85-97,100-101
+pyproject.toml
+  s_269b95d29ae1c3::t_ce6fc1ebfc6ea4 28
+ui/src/api.ts
+  s_269b95d29ae1c3::t_2790c3d1c04eec 2
+uv.lock
+  s_269b95d29ae1c3::t_782a007afbafec 715,736,986-994
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9dc4ca00db56559df87b3c64e03b50b777cf0330",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
