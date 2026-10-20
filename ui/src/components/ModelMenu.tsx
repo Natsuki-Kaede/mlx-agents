@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { Check, ChevronUp, Cpu, Eye } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import type { ModelInfo } from "../api";
+import { openSettings, type ModelInfo } from "../api";
 import { spring } from "./ui";
 import { useDismiss } from "./useDismiss";
 
@@ -9,26 +9,24 @@ export function modelMeta(m: ModelInfo) {
   return [m.vision ? "视觉" : "文本", m.bits ? `${m.bits} bit` : "", `${m.size_gb} GB`].filter(Boolean).join(" · ");
 }
 
-/** The chat model for this conversation; null follows the default set in settings. */
+/** The chat model the agent uses (remembered; the same choice as the default in settings). */
 export function ModelMenu({
   models,
-  defaultId,
   value,
   onChange,
   onOpen,
 }: {
   models: ModelInfo[];
-  defaultId: string | null;
   value: string | null;
-  onChange: (id: string | null) => void;
+  onChange: (id: string) => void;
   onOpen: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useDismiss(open, useCallback(() => setOpen(false), []), root);
   const chat = models.filter((m) => m.kind === "chat");
-  const current = value ?? defaultId;
-  const choose = (id: string | null) => {
+  const current = value;
+  const choose = (id: string) => {
     onChange(id);
     setOpen(false);
   };
@@ -62,14 +60,8 @@ export function ModelMenu({
           style={{ originX: 0.5, originY: 1 }}
           className="glass glass-solid scroll-soft absolute right-2 bottom-full z-30 mb-2 max-h-[max(12rem,calc(100dvh-15rem))] w-96 max-w-[calc(100%-1rem)] overflow-y-auto rounded-2xl p-1.5"
         >
-          <div className="ink-faint px-2.5 pt-1 pb-1.5 text-[11px] font-medium">这段对话使用的模型</div>
-          <button type="button" role="menuitemradio" aria-checked={value === null} onClick={() => choose(null)} className={`${item} hover:bg-[var(--glass-fill-strong)] ${value === null ? "bg-[var(--glass-fill)]" : ""}`}>
-            <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-medium">跟随默认</div>
-              <div className="ink-soft truncate text-[11px]">{defaultId ?? "还没有可用的对话模型"}</div>
-            </div>
-            {value === null && <Check className="size-4 text-[var(--accent)]" />}
-          </button>
+          <div className="ink-faint px-2.5 pt-1 pb-1.5 text-[11px] font-medium">对话模型</div>
+          {!chat.length && <div className="ink-soft px-2.5 py-2 text-xs">还没有可用的对话模型</div>}
           {chat.map((m) => (
             <button
               key={m.id}
@@ -89,7 +81,19 @@ export function ModelMenu({
               {m.id === value && <Check className="size-4 shrink-0 text-[var(--accent)]" />}
             </button>
           ))}
-          <div className="ink-faint px-2.5 pt-1.5 pb-1 text-[11px] leading-relaxed">切换模型会卸载当前模型并加载新模型，首次加载需要十几秒。在设置里可以下载更多模型。</div>
+          <div className="ink-faint px-2.5 pt-1.5 pb-1 text-[11px] leading-relaxed">
+            切换模型会卸载当前模型并加载新模型，首次加载需要十几秒。
+            <button
+              type="button"
+              className="ml-1 underline underline-offset-2 hover:text-[var(--ink)]"
+              onClick={() => {
+                setOpen(false);
+                openSettings("models");
+              }}
+            >
+              下载更多模型
+            </button>
+          </div>
         </motion.div>
       )}
     </div>

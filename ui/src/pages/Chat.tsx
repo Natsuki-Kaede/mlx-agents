@@ -3,13 +3,8 @@ import { ArrowDown, ImageIcon, MessageSquarePlus, ScanSearch, Trash2 } from "luc
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AGENTS_CHANGED,
-  DEFAULT_AGENT,
-  NO_PERMISSIONS,
   api,
   runEvents,
-  type AgentProfile,
-  type ChatSettings,
   type ChatSummary,
   type ChatTurn,
   type ModelList,
@@ -18,7 +13,6 @@ import {
   type RunInfo,
   type ToolEvent,
   type Upload,
-  type VlmParams,
 } from "../api";
 import { ChatActionsContext, type ChatActions } from "../components/chatActions";
 import { Composer } from "../components/Composer";
@@ -29,19 +23,9 @@ import { ThinkingBlock } from "../components/ThinkingBlock";
 import { ToolTimeline } from "../components/ToolTimeline";
 import { usePersistentState } from "../components/usePersistentState";
 import { useStickToBottom } from "../components/useStickToBottom";
-import { Button, ErrorNote, Glass, Label, Slider, spring } from "../components/ui";
+import { Button, ErrorNote, Glass, spring } from "../components/ui";
+import { applySettings } from "../settingsStore";
 
-const DEFAULT_PARAMS: VlmParams = {
-  max_tokens: 1024,
-  temperature: 0.7,
-  repetition_penalty: 1.1,
-  fps: 2,
-  max_frames: 32,
-  reasoning: "off",
-};
-
-// Web, files and commands are opt-in per chat; image generation is offered unless switched off.
-const DEFAULT_SETTINGS: ChatSettings = { ...NO_PERMISSIONS, image: true, autoApprove: [], model: null, agent: null };
 const ASPECTS: Record<string, number> = { "1:1": 1, "3:4": 3 / 4, "4:3": 4 / 3, "9:16": 9 / 16, "16:9": 16 / 9 };
 
 const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -89,47 +73,32 @@ function applyEvent(turn: ChatTurn, ev: RunEvent): ChatTurn {
 }
 
 export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
-  // Conversations and runs live in the backend; the open chat and the generation knobs are remembered locally.
-  const [ui, setUi] = usePersistentState("chat:ui", { chatId: null as string | null, params: DEFAULT_PARAMS, system: "" });
+  // Conversations, runs and settings live in the backend; only the open chat is remembered locally.
+  const [ui, setUi] = usePersistentState("chat:ui", { chatId: null as string | null });
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
-  const [settings, setSettings] = useState<ChatSettings>(DEFAULT_SETTINGS);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Upload[]>([]);
   const [uploading, setUploading] = useState(false);
   const [run, setRun] = useState<RunInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [showPanel, setShowPanel] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [models, setModels] = useState<ModelList | null>(null);
-  const [agents, setAgents] = useState<AgentProfile[]>([]);
   const { ref: list, contentRef, atBottom, scrollToBottom } = useStickToBottom();
   const stream = useRef<AbortController | null>(null);
   const chatIdRef = useRef<string | null>(ui.chatId);
-  const { system, chatId } = ui;
-  const params = { ...DEFAULT_PARAMS, ...ui.params };
-  const setParam = <K extends keyof VlmParams>(key: K, value: VlmParams[K]) =>
-    setUi((u) => ({ ...u, params: { ...DEFAULT_PARAMS, ...u.params, [key]: value } }));
+  const { chatId } = ui;
   const running = !!run && run.chat_id === chatId;
 
   const refreshChats = useCallback(() => api.chats().then(setChats).catch(() => undefined), []);
   const refreshModels = useCallback(() => api.models().then(setModels).catch(() => undefined), []);
-  const refreshAgents = useCallback(() => api.agents().then(setAgents).catch(() => undefined), []);
-  const agentOf = (id?: string | null) => agents.find((a) => a.id === (id ?? DEFAULT_AGENT)) ?? agents.find((a) => a.id === DEFAULT_AGENT);
-  const agent = agentOf(settings.agent);
-
-  useEffect(() => {
-    window.addEventListener(AGENTS_CHANGED, refreshAgents);
-    return () => window.removeEventListener(AGENTS_CHANGED, refreshAgents);
-  }, [refreshAgents]);
 
   /** Load a chat from the backend, which owns it; ignored if another chat was opened meanwhile. */
   const loadChat = useCallback(async (id: string) => {
     const chat = await api.chat(id);
     if (chatIdRef.current !== id) return;
     setTurns(chat.turns);
-    setSettings({ ...DEFAULT_SETTINGS, ...chat.settings });
   }, []);
 
   /** Follow a run: replay its events into a live assistant turn, then reload the chat it saved. */
@@ -147,7 +116,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
           if (controller.signal.aborted) return;
           if (ev.type === "status") setRun((r) => r && { ...r, status: ev.status });
           if (ev.type === "status" && ev.note) setNotice(ev.note);
-          if (ev.type === "auto_approve") setSettings((s) => ({ ...s, autoApprove: ev.auto_approve }));
+          if (ev.type === "auto_approve") applySettings({ auto_approve: ev.auto_approve });
           if (ev.type === "end" && ev.error) setError(ev.error);
           live = applyEvent(live, ev);
           setTurns((ts) => [...ts.slice(0, -1), live]);
@@ -177,7 +146,6 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       setShowHistory(false);
       if (!id) {
         setTurns([]);
-        setSettings(DEFAULT_SETTINGS);
         return;
       }
       try {
@@ -199,7 +167,6 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   useEffect(() => {
     refreshChats();
     refreshModels();
-    refreshAgents();
     if (chatId) openChat(chatId);
     // Restore once on mount; later changes go through openChat.
   }, []);
@@ -233,18 +200,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     setTurns([...before, { role: "user", mode: "chat", content: text, attachments: files }]);
     scrollToBottom();
     try {
-      const { autoApprove, model, agent: agentId, ...permissions } = settings;
-      const info = await api.startRun({
-        model: model ?? null,
-        agent: agentId ?? null,
-        chat_id: id,
-        content: text,
-        attachments: files.map((a) => a.id),
-        params,
-        permissions,
-        auto_approve: autoApprove ?? [],
-        system,
-      });
+      const info = await api.startRun({ chat_id: id, content: text, attachments: files.map((a) => a.id) });
       follow(info);
       refreshChats();
     } catch (e) {
@@ -254,16 +210,6 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       setError(errorText(e));
     }
   };
-
-  // Switches belong to the chat: a saved conversation stores them now, a new one with its first message.
-  const changeSettings = (next: ChatSettings) => {
-    setSettings(next);
-    if (chatId && turns.length) api.patchChatSettings(chatId, next).catch((e) => setError(`设置未能保存：${errorText(e)}`));
-  };
-
-  // An agent brings its own tools and model; auto-approvals already granted in this chat stay.
-  const chooseAgent = (a: AgentProfile) =>
-    changeSettings({ ...settings, ...NO_PERMISSIONS, ...a.permissions, agent: a.id, model: a.model ?? settings.model ?? null });
 
   const actions: ChatActions = {
     useAsBase: (file) => {
@@ -314,10 +260,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
               onClick={() => openChat(c.id)}
               className={`w-full rounded-2xl px-3 py-2.5 text-left transition-colors ${c.id === chatId ? "glass glass-strong" : "hover:bg-[var(--glass-fill)]"}`}
             >
-              <div className="truncate pr-6 text-[13px] font-medium">
-                {c.agent && c.agent !== DEFAULT_AGENT && <span className="mr-1">{agentOf(c.agent)?.icon}</span>}
-                {c.title}
-              </div>
+              <div className="truncate pr-6 text-[13px] font-medium">{c.title}</div>
               <div className="ink-faint mt-0.5 text-[11px] tabular-nums">
                 {when(c.updated)} · {Math.ceil(c.turns / 2)} 轮
               </div>
@@ -363,23 +306,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
                         今天要做点什么？
                       </div>
                       <div className="ink-soft mt-2 text-sm leading-relaxed">
-                        选一个 agent，直接说需求。多步任务会先列计划再逐步执行；写文件、运行命令前会先请你批准。
-                      </div>
-                      <div className="mt-6 grid grid-cols-2 gap-2 text-left">
-                        {agents.map((a) => (
-                          <button
-                            key={a.id}
-                            type="button"
-                            onClick={() => chooseAgent(a)}
-                            className={`glass rounded-2xl px-3.5 py-3 text-left transition-shadow ${a.id === agent?.id ? "ring-2 ring-[var(--accent)]" : "hover:bg-[var(--glass-fill-strong)]"}`}
-                          >
-                            <div className="flex items-center gap-2 text-[13px] font-medium">
-                              <span className="text-base leading-none">{a.icon}</span>
-                              <span className="truncate">{a.name}</span>
-                            </div>
-                            <div className="ink-soft mt-1 line-clamp-2 text-[11px] leading-snug">{a.description}</div>
-                          </button>
-                        ))}
+                        直接说需求：问问题、查资料、写代码、处理文件、画图。多步任务会先列计划再逐步执行；写文件、运行命令前会先请你批准。
                       </div>
                     </div>
                   </motion.div>
@@ -476,31 +403,6 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
           <ErrorNote error={error} />
           {notice && <div className="ink-soft glass rounded-2xl px-4 py-2.5 text-xs">{notice}</div>}
 
-          {showPanel && (
-            <Glass
-              initial={{ y: 12, scale: 0.98 }}
-              animate={{ y: 0, scale: 1 }}
-              transition={spring}
-              className="grid gap-4 p-5 sm:grid-cols-2"
-            >
-              <div className="sm:col-span-2">
-                <Label>额外要求（每条消息都会带上，可留空）</Label>
-                <textarea className="field min-h-16" value={system} onChange={(e) => setUi((u) => ({ ...u, system: e.target.value }))} />
-              </div>
-              {(
-                [
-                  ["max_tokens", "每轮最大生成长度", 64, 4096, 64, (v: number) => `${v} tokens`],
-                  ["temperature", "温度", 0, 1.5, 0.05, (v: number) => v.toFixed(2)],
-                  ["repetition_penalty", "重复惩罚", 1, 1.5, 0.05, (v: number) => v.toFixed(2)],
-                  ["fps", "视频采样帧率", 0.5, 4, 0.5, (v: number) => `${v} fps`],
-                  ["max_frames", "视频最多帧数", 4, 64, 4, (v: number) => `${v} 帧`],
-                ] as const
-              ).map(([key, label, min, max, step, format]) => (
-                <Slider key={key} label={label} value={params[key]} min={min} max={max} step={step} format={format} onChange={(v) => setParam(key, v)} />
-              ))}
-            </Glass>
-          )}
-
           <Composer
             input={input}
             onInput={setInput}
@@ -511,19 +413,11 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             running={running}
             onSend={send}
             onStop={() => run && api.cancelRun(run.id).catch((e) => setError(errorText(e)))}
-            settings={settings}
-            onSettings={changeSettings}
-            reasoning={params.reasoning}
-            onReasoning={(v) => setParam("reasoning", v)}
-            onTogglePanel={() => setShowPanel((v) => !v)}
             onShowHistory={() => setShowHistory(true)}
+            onError={setError}
             models={models?.models ?? []}
             defaultModel={models?.default_chat ?? null}
             onRefreshModels={refreshModels}
-            agents={agents}
-            agent={agent}
-            onAgent={chooseAgent}
-            onRefreshAgents={refreshAgents}
           />
         </div>
       </div>

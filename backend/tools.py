@@ -58,7 +58,7 @@ class ToolContext(Protocol):
     def cancelled(self) -> bool: ...
     def update(self, **fields) -> None: ...  # merge fields into this call's card and push it to the client
     def set_plan(self, steps: list[dict]) -> None: ...
-    def delegate(self, task: str, agent_id: str | None, context: str) -> tuple[str, dict]: ...
+    def delegate(self, task: str, context: str) -> tuple[str, dict]: ...
 
 
 @dataclass
@@ -68,7 +68,7 @@ class Tool:
     description: str
     parameters: dict
     handler: Callable[[ToolContext, dict], tuple[str, dict]]
-    approval: str | None = None  # "write" | "exec" | "mcp": asks the user first unless auto-approved for the chat
+    approval: str | None = None  # "write" | "exec" | "mcp": asks the user first unless the auto-approve mode is on
     preview: Callable[[ToolContext, dict], dict] | None = None  # what the approval card shows
 
     def schema(self) -> dict:
@@ -458,7 +458,7 @@ def _forget(ctx: ToolContext, args: dict) -> tuple[str, dict]:
 
 
 def _delegate_task(ctx: ToolContext, args: dict) -> tuple[str, dict]:
-    return ctx.delegate(_str(args, "task"), _str(args, "agent", required=False) or None, _str(args, "context", required=False))
+    return ctx.delegate(_str(args, "task"), _str(args, "context", required=False))
 
 
 def _search_chats(ctx: ToolContext, args: dict) -> tuple[str, dict]:
@@ -496,7 +496,6 @@ TOOLS: dict[str, Tool] = {
         Tool("delegate_task", "agents", "Hand a self-contained subtask to a sub-agent that works in its own fresh context with the same tools and reports back only its final result. Use it for research, searching or reading-heavy work whose details you do not need to keep. The sub-agent cannot see this conversation, so describe the task completely.",
              _params({
                  "task": {"type": "string", "description": "The complete task: goal, scope and the expected result"},
-                 "agent": {"type": "string", "description": "Optional agent id whose role instructions (and model, if it sets one) the sub-agent uses; it always gets the same tools as you. Defaults to the current agent"},
                  "context": {"type": "string", "description": "Optional background the sub-agent needs, e.g. facts or file names found so far"},
              }, ["task"]), _delegate_task),
         Tool("web_search", "web", "Search the web with DuckDuckGo. Returns titles, URLs and snippets. Use for current events, facts you are unsure of, or anything after your training data.",

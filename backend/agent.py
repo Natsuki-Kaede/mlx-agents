@@ -29,19 +29,19 @@ TRIMMED_TOOL_CHARS = 500
 APPROVAL_TIMEOUT = 1800
 KEEP_FINISHED_RUNS = 50
 
-SYSTEM = """你是「{name}」，一个运行在用户自己 Mac 上的本地 AI agent（MLX Agents），可以调用工具完成任务。当前时间：{now}。{role}
+SYSTEM = """你是 MLX Agents，一个运行在用户自己 Mac 上的本地 AI agent，可以调用工具完成任务。当前时间：{now}。
 工作方式：
 - 3 步以上的任务先用 update_plan 列出步骤，开始和完成每一步时更新状态；简单问题直接回答，不用列计划。
 - 只调用真正需要的工具，读到结果后再决定下一步；不要编造工具没有返回的信息，出错时如实说明并换个办法。
 - 用户表达了值得长期记住的偏好或背景时，用 remember 保存。
-{rules}{memory}"""
+{rules}{instructions}{memory}"""
 RULES = {
     "web": "- 需要最新信息、具体数据或你不确定的事实时，先 web_search 再 read_page 阅读最相关的 1–3 个结果，基于读到的内容回答，并用 Markdown 链接 [标题](网址) 标注来源。",
     "image": "- 画图用 generate_image：用户给了现成提示词就原样使用，否则写出具体详细的提示词（主体、场景、构图、光线、风格）；图片会自动展示给用户，不要在回答里贴图片地址。\n- 以附图或作品库里的图为基础复刻、改图时设置 reference_index 或 reference_file，并按改动大小设置 strength：这个模型会牢牢保留底图的构图和光线，换场景、时间、风格等大改动用 0.05–0.15，中等改动 0.2–0.4，只做微调才用 0.5 以上；改动特别大时也可以不用底图。",
-    "files": "- 文件工具只能访问工作目录 {workspace}。处理文件前先了解现状：find_files 按文件名找、search_files 按内容搜、list_dir 看目录、read_file 读内容；新文件用 write_file，修改用 edit_file（old_text 必须与原文完全一致）。写入前用户会审批，被拒绝就换个做法或询问用户。",
+    "files": "- 文件工具只能访问工作目录 {workspace}。处理文件前先了解现状：find_files 按文件名找、search_files 按内容搜、list_dir 看目录、read_file 读内容；新文件用 write_file，修改用 edit_file（old_text 必须与原文完全一致）。写入前用户会审批，被拒绝就换个做法或询问用户。\n- 改代码前先弄清相关代码和约定，不要凭猜测修改；改动保持最小、贴合现有风格；改完运行测试、构建或相关命令验证，最后简要说明改了什么、怎么验证的。",
     "exec": "- run_command 在工作目录 {workspace} 用 zsh 运行命令（脚本、测试、命令行工具等），运行前用户会审批；命令要能直接执行、尽量非交互，长时间任务设置合适的 timeout。",
     "mcp": "- 名字以 mcp__ 开头的工具来自用户接入的 MCP 服务，按工具说明传参；调用前用户会审批（除非已设为自动批准）。",
-    "agents": "- 可以独立完成、需要大量搜索或阅读的子任务，用 delegate_task 交给子 agent：它在独立的上下文里工作，只把结果报告给你，能让你的上下文保持简洁。任务描述要完整具体（目标、范围、期望的产出），子 agent 看不到这段对话，但和你用同样的工具。它的报告里说没能确认的内容，不要当作事实转述。可选的 agent（只决定子 agent 的角色指令）：{agents}。",
+    "agents": "- 可以独立完成、需要大量搜索或阅读的子任务，用 delegate_task 交给子 agent：它在独立的上下文里工作，只把结果报告给你，能让你的上下文保持简洁。任务描述要完整具体（目标、范围、期望的产出），子 agent 看不到这段对话，但和你用同样的工具。它的报告里说没能确认的内容，不要当作事实转述。",
 }
 SUB_AGENT_NOTE = """
 
@@ -50,14 +50,13 @@ SUB_AGENT_NOTE = """
 完成后给出简洁完整的结果报告——主 agent 只能看到你的最终回复，看不到你的工具调用过程。"""
 
 
-def system_prompt(groups: set[str], workspace: Path, profile: dict | None = None) -> str:
-    profile = profile or store.get_agent(None)
-    role = f"\n\n你的角色和要求：\n{profile['instructions'].strip()}\n" if profile.get("instructions", "").strip() else ""
-    agents = "、".join(f"{a['id']}（{a['name']}：{a['description']}）" for a in store.agents())
-    rules = "\n".join(RULES[g].format(workspace=workspace, agents=agents) for g in RULES if g in groups)
+def system_prompt(groups: set[str], workspace: Path) -> str:
+    rules = "\n".join(RULES[g].format(workspace=workspace) for g in RULES if g in groups)
+    text = store.settings()["instructions"].strip()
+    instructions = f"\n\n用户的全局指令（AGENTS.md），务必遵守：\n{text}" if text else ""
     items = store.memories()
     memory = ("\n\n关于用户的长期记忆（过时或错误时用 forget 删除）：\n" + "\n".join(f"- [{m['id']}] {m['text']}" for m in items)) if items else ""
-    return SYSTEM.format(name=profile["name"], role=role, now=datetime.now().strftime("%Y-%m-%d %H:%M"), rules=rules, memory=memory)
+    return SYSTEM.format(now=datetime.now().strftime("%Y-%m-%d %H:%M"), rules=rules, instructions=instructions, memory=memory)
 
 
 HISTORY_TOOL_TURNS = 6  # the latest assistant turns whose tool calls are replayed as real calls
@@ -139,7 +138,6 @@ class Run:
     events: list[dict] = field(default_factory=list)
     tools: list[dict] = field(default_factory=list)
     plan: list[dict] = field(default_factory=list)
-    auto_approve: set[str] = field(default_factory=set)
     created: float = field(default_factory=time.time)
     history: list[dict] = field(default_factory=list)
     _cancel: bool = False
@@ -219,8 +217,8 @@ class _Context:
         self._run.plan = steps
         self._run.emit({"type": "plan", "plan": steps})
 
-    def delegate(self, task: str, agent_id: str | None, context: str) -> tuple[str, dict]:
-        return self._agent._delegate(self._run, self, self._scope, task, agent_id, context)
+    def delegate(self, task: str, context: str) -> tuple[str, dict]:
+        return self._agent._delegate(self._run, self, self._scope, task, context)
 
 
 class Agent:
@@ -229,9 +227,9 @@ class Agent:
         self.runs: dict[str, Run] = {}
 
     def start(self, request: dict) -> Run:
-        """Queue a run on the MLX thread. `request`: chat_id, content, attachments ({id, kind, url, path}),
-        params, permissions {web, image, files, exec}, auto_approve, system, model (chat model id), agent (agent id)."""
-        run = Run(id=uuid.uuid4().hex[:12], chat_id=request["chat_id"], request=request, auto_approve=set(request.get("auto_approve") or []))
+        """Start a run on its own thread. `request`: chat_id, content, attachments ({id, kind, url, path}), and the
+        settings it runs with: params (generation and reasoning), permissions (tool groups), model (chat model id)."""
+        run = Run(id=uuid.uuid4().hex[:12], chat_id=request["chat_id"], request=request)
         # Save the user turn now, so a queued run already shows in the chat list and on reopening the chat.
         before = store.load_chat(run.chat_id) or {"turns": []}
         run.history = history_for(before["turns"])
@@ -239,9 +237,8 @@ class Agent:
         user_turn = {"role": "user", "mode": "chat", "content": request["content"], "attachments": attachments}
 
         def add_user(c: dict) -> dict:
-            title = c.get("title") or (request["content"].replace("\n", " ").strip() or "图片 / 视频对话")[:28]
-            settings = (c.get("settings") or {}) | (request.get("permissions") or {}) | {"autoApprove": sorted(run.auto_approve), "model": request.get("model"), "agent": request.get("agent")}
-            return c | {"title": title, "turns": [*c["turns"], user_turn], "settings": settings}
+            title = c.get("title") or (request["content"].replace("\n", " ").strip() or "图片对话")[:28]
+            return c | {"title": title, "turns": [*c["turns"], user_turn]}
 
         store.update_chat(run.chat_id, add_user)
         self.runs[run.id] = run
@@ -277,7 +274,7 @@ class Agent:
             images=[a["path"] for a in attachments if a["kind"] == "image"], videos=[a["path"] for a in attachments if a["kind"] == "video"],
             workspace=store.workspace(), params=req["params"], model=req.get("model"),
         )
-        system = system_prompt(groups, scope.workspace, store.get_agent(req.get("agent"))) + (f"\n\n用户的额外要求：\n{req['system']}" if req.get("system") else "")
+        system = system_prompt(groups, scope.workspace)
         convo = [{"role": "system", "content": system}, *run.history, {"role": "user", "content": req["content"]}]
         started = time.time()
         result, error = {"answer": "", "thinking": "", "tokens": {"thinking": 0, "answer": 0}, "stats": {}, "peak": 0.0, "load": 0.0}, None
@@ -343,22 +340,17 @@ class Agent:
                     break
             _compact(convo)
 
-    def _delegate(self, run: Run, ctx: "_Context", scope: Scope, task: str, agent_id: str | None, context: str) -> tuple[str, dict]:
-        """Run a sub-agent on `task` in a fresh context; its tool cards nest under this call's card."""
-        if agent_id and not any(a["id"] == agent_id for a in store.agents()):
-            raise ToolError(f"没有 id 为 {agent_id} 的 agent")
-        profile = store.get_agent(agent_id or run.request.get("agent"))
-        # The sub-agent works with the chat's switches. A named agent contributes its instructions and model only:
-        # an agent's permissions are the starting switches of a chat, not limits on work done inside one.
+    def _delegate(self, run: Run, ctx: "_Context", scope: Scope, task: str, context: str) -> tuple[str, dict]:
+        """Run a sub-agent on `task` in a fresh context with the same tools; its tool cards nest under this call's card."""
         groups = set(scope.groups) - {"agents"}
         sub = Scope(
             groups=groups, tools={n: t for n, t in scope.tools.items() if n not in SUB_AGENT_EXCLUDED and (t.group == "core" or t.group in groups)},
             images=[], videos=[], workspace=scope.workspace, params=scope.params,
-            model=(profile.get("model") if agent_id else None) or scope.model, parent=ctx._card["id"],
+            model=scope.model, parent=ctx._card["id"],
         )
-        ctx.update(agent={"id": profile["id"], "name": profile["name"], "icon": profile["icon"]}, output="")
+        ctx.update(output="")
         convo = [
-            {"role": "system", "content": system_prompt(groups, sub.workspace, profile) + SUB_AGENT_NOTE},
+            {"role": "system", "content": system_prompt(groups, sub.workspace) + SUB_AGENT_NOTE},
             {"role": "user", "content": task + (f"\n\n背景信息：\n{context}" if context else "")},
         ]
         result = {"answer": "", "thinking": "", "tokens": {"thinking": 0, "answer": 0}, "stats": {}, "peak": 0.0, "load": 0.0}
@@ -375,7 +367,7 @@ class Agent:
         ctx.update(output=answer)
         if run.cancelled():
             raise ToolError("任务已被用户停止")
-        return f"子 agent「{profile['name']}」的结果：\n{answer}", {"output": answer, "tokens": result["tokens"]["answer"]}
+        return f"子 agent 的结果：\n{answer}", {"output": answer, "tokens": result["tokens"]["answer"]}
 
     def _call_tool(self, run: Run, call: dict, scope: Scope) -> str:
         """Run one tool call (asking for approval when needed); returns the text the model sees."""
@@ -387,14 +379,14 @@ class Agent:
         try:
             if tool is None:
                 raise ToolError(f"工具 {name} 在这段对话里没有开启" if name in TOOLS else f"没有叫 {name} 的工具")
-            if tool.approval and tool.approval not in run.auto_approve:
+            # Read live, so switching the auto-approve mode on during a run applies to its next call.
+            if tool.approval and not store.settings()["auto_approve"]:
                 card.update(status="awaiting_approval", approval=tool.preview(ctx, args) if tool.preview else {"summary": name, "detail": ""})
                 run.emit({"type": "tool", "tool": dict(card)})
                 decision = run.wait_decision(card["id"])
                 if decision == "always":
-                    run.auto_approve.add(tool.approval)
-                    store.update_chat(run.chat_id, lambda c: c | {"settings": (c.get("settings") or {}) | {"autoApprove": sorted(run.auto_approve)}})
-                    run.emit({"type": "auto_approve", "auto_approve": sorted(run.auto_approve)})
+                    store.update_settings({"auto_approve": True})
+                    run.emit({"type": "auto_approve", "auto_approve": True})
                 elif decision != "allow":
                     card.update(status="denied", decision=decision)
                     run.emit({"type": "tool", "tool": dict(card)})

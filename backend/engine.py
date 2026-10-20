@@ -52,6 +52,8 @@ PROMPT_CACHE_SIZE = 32
 REASONING_BUDGETS = {"low": 512, "medium": 2048, "high": None}
 UNBOUNDED_REASONING_TOKENS = 8192
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
+VIDEO_FPS = 2.0  # frames sampled per second of an attached video, up to VIDEO_MAX_FRAMES
+VIDEO_MAX_FRAMES = 32
 
 Emit = Callable[[str, str, dict], None]  # (kind "thinking" | "answer", text, running token counts)
 
@@ -363,13 +365,13 @@ class Engine:
         if info.runtime == "mlx-vlm":
             template_kwargs = {"enable_thinking": reasoning} | ({"tools": tools} if tools else {})
             if videos:
-                template_kwargs.update(video=videos, fps=params["fps"])
+                template_kwargs.update(video=videos, fps=VIDEO_FPS)
             prompt = apply_chat_template(processor, model.config, messages, num_images=len(images), **template_kwargs)
             extra = ({"enable_thinking": True} | ({"thinking_budget": budget} if budget else {})) if reasoning else {}
             generator = vlm_stream_generate(
                 model, processor, prompt, image=images or None, video=videos or None, max_tokens=max_tokens,
                 temperature=params["temperature"], repetition_penalty=params["repetition_penalty"],
-                fps=params["fps"], max_frames=params["max_frames"], **extra,
+                fps=VIDEO_FPS, max_frames=VIDEO_MAX_FRAMES, **extra,
             )
         else:
             prompt = processor.apply_chat_template(messages, tools=tools, add_generation_prompt=True, tokenize=False, enable_thinking=reasoning)

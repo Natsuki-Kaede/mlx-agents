@@ -175,7 +175,7 @@ function describe(tool: ToolEvent, job: Job | null): { icon: typeof Search; titl
     case "delegate_task":
       return {
         icon: Bot,
-        title: `${tool.agent ? `${tool.agent.icon} ${tool.agent.name}` : "子 agent"}：${clip(a.task, 48)}`,
+        title: `子 agent：${clip(a.task, 48)}`,
         detail: tool.status === "running" ? "子 agent 工作中" : "",
         body: (
           <div className="ink-soft mt-2 border-l-2 border-[var(--glass-edge)] pl-3 text-xs leading-relaxed whitespace-pre-wrap">
@@ -264,7 +264,7 @@ function Approval({ tool }: { tool: ToolEvent }) {
           允许
         </button>
         <button type="button" disabled={sent} onClick={() => decide("always")} className={`glass ${btn}`}>
-          本对话总是允许
+          允许并开启自动批准
         </button>
         <button type="button" disabled={sent} onClick={() => decide("deny")} className={`${btn} text-[var(--danger)] hover:bg-[var(--glass-fill)]`}>
           拒绝

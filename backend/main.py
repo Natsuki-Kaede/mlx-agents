@@ -32,13 +32,10 @@ app.mount("/media/outputs", StaticFiles(directory=OUTPUTS), name="outputs")
 app.mount("/media/uploads", StaticFiles(directory=UPLOADS), name="uploads")
 
 
-class VlmParams(BaseModel):
+class GenParams(BaseModel):
     max_tokens: int = Field(1024, ge=16, le=8192)
     temperature: float = Field(0.7, ge=0, le=2)
     repetition_penalty: float = Field(1.1, ge=1, le=2)
-    fps: float = Field(2.0, gt=0, le=8)
-    max_frames: int = Field(32, ge=2, le=128)
-    reasoning: Literal["off", "low", "medium", "high"] = "off"
 
 
 class Permissions(BaseModel):
@@ -51,15 +48,11 @@ class Permissions(BaseModel):
 
 
 class RunRequest(BaseModel):
+    """A message for the agent; the switches, model and parameters come from the settings."""
+
     chat_id: str
     content: str = ""
     attachments: list[str] = []
-    params: VlmParams = VlmParams()
-    permissions: Permissions = Permissions()
-    auto_approve: list[Literal["write", "exec", "mcp"]] = []
-    system: str = ""
-    model: str | None = None  # chat model id (folder under models/); None uses the default
-    agent: str | None = None  # agent id; None uses the default agent
 
 
 class Decision(BaseModel):
@@ -130,8 +123,9 @@ def start_run(req: RunRequest):
         raise HTTPException(400, "消息为空")
     if agent.active_run(req.chat_id):
         raise HTTPException(409, "这段对话还有任务在进行")
+    settings = store.settings()
     try:
-        model = models.resolve("chat", req.model)
+        model = models.resolve("chat", settings.get("chat_model"))
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     attachments = []
@@ -141,8 +135,10 @@ def start_run(req: RunRequest):
         attachments.append({"id": name, "kind": kind, "url": f"/media/uploads/{name}", "path": str(path)})
     if attachments and not model.vision:
         raise HTTPException(400, f"{model.id} 是纯文本模型，看不了图片或视频；请换一个视觉模型")
-    request = req.model_dump() | {"attachments": attachments, "content": req.content.strip() or "请描述这个内容。"}
-    request["permissions"] = req.permissions.model_dump()
+    request = req.model_dump() | {
+        "attachments": attachments, "content": req.content.strip() or "请描述这个内容。", "model": model.id,
+        "permissions": settings["permissions"], "params": settings["params"] | {"reasoning": settings["reasoning"]},
+    }
     return agent.start(request).public()
 
 
@@ -241,67 +237,10 @@ def get_chat(chat_id: str):
     return {"id": chat_id, **chat}
 
 
-@app.patch("/api/chats/{chat_id}/settings")
-def patch_chat_settings(chat_id: str, patch: dict):
-    """Per-chat switches (web, image, files, exec, autoApprove); a chat without turns yet is created."""
-    chat = store.update_chat(checked_chat_id(chat_id), lambda c: c | {"settings": (c.get("settings") or {}) | patch})
-    return chat["settings"]
-
-
 @app.delete("/api/chats/{chat_id}")
 def delete_chat(chat_id: str):
     store.delete_chat(checked_chat_id(chat_id))
     return {"id": chat_id}
-
-
-# ----- agents -----
-
-
-class AgentProfile(BaseModel):
-    name: str = Field(min_length=1, max_length=40)
-    icon: str = Field("🤖", min_length=1, max_length=8)
-    description: str = Field("", max_length=200)
-    instructions: str = Field("", max_length=8000)
-    permissions: Permissions = Permissions()
-    model: str | None = None
-
-
-def checked_profile(profile: AgentProfile) -> dict:
-    if profile.model:
-        try:
-            models.resolve("chat", profile.model)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
-    return profile.model_dump()
-
-
-@app.get("/api/agents")
-def list_agents():
-    return store.agents()
-
-
-@app.post("/api/agents")
-def create_agent(profile: AgentProfile):
-    return store.save_agent(checked_profile(profile))
-
-
-@app.put("/api/agents/{agent_id}")
-def update_agent(agent_id: str, profile: AgentProfile):
-    try:
-        return store.save_agent(checked_profile(profile) | {"id": agent_id})
-    except KeyError as exc:
-        raise HTTPException(404, "agent 不存在") from exc
-
-
-@app.delete("/api/agents/{agent_id}")
-def delete_agent(agent_id: str):
-    try:
-        store.delete_agent(agent_id)
-    except KeyError as exc:
-        raise HTTPException(404, "agent 不存在") from exc
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"id": agent_id}
 
 
 # ----- MCP servers -----
@@ -394,6 +333,11 @@ class SettingsPatch(BaseModel):
     workspace: str | None = None
     chat_model: str | None = None
     image_model: str | None = None
+    permissions: Permissions | None = None
+    auto_approve: bool | None = None
+    reasoning: Literal["off", "low", "medium", "high"] | None = None
+    params: GenParams | None = None
+    instructions: str | None = Field(None, max_length=20000)
 
 
 @app.get("/api/settings")

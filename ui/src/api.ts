@@ -14,14 +14,7 @@ export type ModelInfo = {
 export type ModelDownload = { repo: string; id: string; status: "running" | "done" | "error"; total: number; done: number; error: string | null };
 export type ModelList = { models: ModelInfo[]; default_chat: string | null; default_image: string | null; downloads: ModelDownload[] };
 export type Reasoning = "off" | "low" | "medium" | "high";
-export type VlmParams = {
-  max_tokens: number;
-  temperature: number;
-  repetition_penalty: number;
-  fps: number;
-  max_frames: number;
-  reasoning: Reasoning;
-};
+export type GenParams = { max_tokens: number; temperature: number; repetition_penalty: number };
 export type TokenCounts = { thinking: number; answer: number };
 export type VlmStats = {
   seconds: number;
@@ -60,21 +53,8 @@ export type Job = {
   elapsed: number;
 };
 
-/** Per-chat switches: which tool groups the agent may use, and which approvals it may skip. */
+/** Which tool groups the agent may use; global and remembered, like the auto-approve mode. */
 export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean; mcp: boolean; agents: boolean };
-export const NO_PERMISSIONS: Permissions = { web: false, image: false, files: false, exec: false, mcp: false, agents: false };
-export type ApprovalKind = "write" | "exec" | "mcp";
-export type ChatSettings = Permissions & { autoApprove?: ApprovalKind[]; model?: string | null; agent?: string | null };
-export type AgentProfile = {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  instructions: string;
-  permissions: Permissions;
-  model: string | null;
-};
-export const DEFAULT_AGENT = "general";
 
 export type PlanStep = { text: string; status: "pending" | "in_progress" | "done" };
 export type ToolEvent = {
@@ -100,7 +80,6 @@ export type ToolEvent = {
   parent?: string;
   server?: string;
   tool?: string;
-  agent?: { id: string; name: string; icon: string };
   job?: string;
   image?: string;
   file?: string;
@@ -136,21 +115,35 @@ export type ChatTurn = {
   attachments?: Upload[];
   stats?: (VlmStats & { tokens?: TokenCounts }) | null;
 };
-export type SavedChat = { title: string; turns: ChatTurn[]; settings?: Partial<ChatSettings> };
-export type ChatSummary = { id: string; title: string; updated: number; turns: number; agent?: string | null };
+export type SavedChat = { title: string; turns: ChatTurn[] };
+export type ChatSummary = { id: string; title: string; updated: number; turns: number };
 export type RunInfo = { id: string; chat_id: string; status: string; events: number; created: number };
 export type RunEvent = { seq: number } & (
   | { type: "status"; status: string; note?: string }
   | { type: "thinking" | "answer"; text: string; tokens: TokenCounts }
   | { type: "tool"; tool: ToolEvent }
   | { type: "plan"; plan: PlanStep[] }
-  | { type: "auto_approve"; auto_approve: ApprovalKind[] }
+  | { type: "auto_approve"; auto_approve: boolean }
   | { type: "end"; status: "done" | "error" | "cancelled"; stats: VlmStats & { tokens?: TokenCounts }; error: string | null }
 );
 export type Memory = { id: string; text: string; created: number };
 export type McpServerStatus = { name: string; state: "idle" | "connecting" | "connected" | "error" | "stopped" | "disabled"; error: string | null; tools: string[] };
 export type McpState = { config: { mcpServers: Record<string, unknown> }; status: McpServerStatus[] };
-export type AppSettings = { workspace: string; workspace_resolved: string; chat_model?: string; image_model?: string };
+export type AppSettings = {
+  workspace: string;
+  workspace_resolved: string;
+  chat_model?: string;
+  image_model?: string;
+  permissions: Permissions;
+  auto_approve: boolean;
+  reasoning: Reasoning;
+  params: GenParams;
+  instructions: string;
+};
+export type SettingsPatch = Partial<Omit<AppSettings, "workspace_resolved" | "permissions" | "params">> & {
+  permissions?: Partial<Permissions>;
+  params?: Partial<GenParams>;
+};
 
 export const FIELD_LABELS: Record<string, string> = {
   subject: "主体",
@@ -201,20 +194,8 @@ export const api = {
   chats: () => request<ChatSummary[]>("/api/chats"),
   chat: (id: string) => request<SavedChat & { id: string }>(`/api/chats/${id}`),
   chatRun: (id: string) => request<RunInfo | null>(`/api/chats/${id}/run`),
-  patchChatSettings: (id: string, patch: Partial<ChatSettings>) =>
-    request<Partial<ChatSettings>>(`/api/chats/${id}/settings`, send("PATCH", patch)),
   deleteChat: (id: string) => request<{ id: string }>(`/api/chats/${id}`, { method: "DELETE" }),
-  startRun: (body: {
-    chat_id: string;
-    content: string;
-    attachments: string[];
-    params: VlmParams;
-    permissions: Permissions;
-    auto_approve: ApprovalKind[];
-    system: string;
-    model: string | null;
-    agent: string | null;
-  }) => request<RunInfo>("/api/runs", json(body)),
+  startRun: (body: { chat_id: string; content: string; attachments: string[] }) => request<RunInfo>("/api/runs", json(body)),
   cancelRun: (id: string) => request<{ id: string }>(`/api/runs/${id}/cancel`, { method: "POST" }),
   approve: (id: string, tool_id: string, decision: "allow" | "always" | "deny") =>
     request<{ id: string }>(`/api/runs/${id}/approvals`, json({ tool_id, decision })),
@@ -222,15 +203,11 @@ export const api = {
   addMemory: (text: string) => request<Memory>("/api/memory", json({ text })),
   deleteMemory: (id: string) => request<{ id: string }>(`/api/memory/${id}`, { method: "DELETE" }),
   settings: () => request<AppSettings>("/api/settings"),
-  saveSettings: (patch: { workspace?: string; chat_model?: string; image_model?: string }) => request<AppSettings>("/api/settings", send("PUT", patch)),
+  saveSettings: (patch: SettingsPatch) => request<AppSettings>("/api/settings", send("PUT", patch)),
   models: () => request<ModelList>("/api/models"),
-  agents: () => request<AgentProfile[]>("/api/agents"),
   mcp: () => request<McpState>("/api/mcp"),
   saveMcp: (config: unknown) => request<McpState>("/api/mcp", send("PUT", config)),
   connectMcp: () => request<McpState>("/api/mcp/connect", { method: "POST" }),
-  saveAgent: ({ id, ...profile }: Omit<AgentProfile, "id"> & { id?: string }) =>
-    id ? request<AgentProfile>(`/api/agents/${id}`, send("PUT", profile)) : request<AgentProfile>("/api/agents", json(profile)),
-  deleteAgent: (id: string) => request<{ id: string }>(`/api/agents/${id}`, { method: "DELETE" }),
   downloadModel: (repo: string) => request<ModelDownload>("/api/models/download", json({ repo })),
 };
 
@@ -268,5 +245,3 @@ export async function* watchJob(id: string, signal?: AbortSignal): AsyncGenerato
 export function openSettings(tab?: string) {
   window.dispatchEvent(new CustomEvent("open-settings", { detail: tab }));
 }
-/** Agents were added, edited or removed in settings. */
-export const AGENTS_CHANGED = "agents-changed";

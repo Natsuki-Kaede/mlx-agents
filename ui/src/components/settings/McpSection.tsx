@@ -66,7 +66,7 @@ export function McpSection({ onError }: { onError: (e: string | null) => void })
     <div className="space-y-4">
       <div className="ink-faint text-xs leading-relaxed">
         接入 Model Context Protocol 服务，给 agent 增加工具。格式与 Claude Desktop、Cursor 的配置相同：本地服务写 command / args / env（在工作目录里启动），远程服务写 url / headers；加 "disabled": true
-        可暂时停用。对话里打开「MCP」开关后，agent 才能调用这些工具，每次调用前会请你批准。
+        可暂时停用。对话里打开「MCP」开关后，agent 才能调用这些工具；没开自动批准时，每次调用前会请你批准。
       </div>
       <section className="space-y-2">
         <Label>

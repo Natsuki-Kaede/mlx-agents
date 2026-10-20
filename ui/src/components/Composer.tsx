@@ -1,8 +1,8 @@
 import { motion } from "motion/react";
-import { ArrowUp, Film, History, Paperclip, SlidersHorizontal, Square, X } from "lucide-react";
+import { ArrowUp, Film, History, Paperclip, Square, X } from "lucide-react";
 import { useRef } from "react";
-import type { AgentProfile, ChatSettings, ModelInfo, Reasoning, Upload } from "../api";
-import { AgentMenu } from "./AgentMenu";
+import type { ModelInfo, Upload } from "../api";
+import { updateSettings, useAppSettings } from "../settingsStore";
 import { ModelMenu } from "./ModelMenu";
 import { ReasoningMenu } from "./ReasoningMenu";
 import { ToolsMenu } from "./ToolsMenu";
@@ -19,21 +19,16 @@ export function Composer(props: {
   running: boolean;
   onSend: () => void;
   onStop: () => void;
-  settings: ChatSettings;
-  onSettings: (s: ChatSettings) => void;
-  reasoning: Reasoning;
-  onReasoning: (r: Reasoning) => void;
-  onTogglePanel: () => void;
   onShowHistory: () => void;
+  onError: (e: string) => void;
   models: ModelInfo[];
   defaultModel: string | null;
   onRefreshModels: () => void;
-  agents: AgentProfile[];
-  agent: AgentProfile | undefined;
-  onAgent: (a: AgentProfile) => void;
-  onRefreshAgents: () => void;
 }) {
   const { input, attachments, running } = props;
+  const settings = useAppSettings();
+  const save = (patch: Parameters<typeof updateSettings>[0]) =>
+    updateSettings(patch).catch((e) => props.onError(`设置未能保存：${e instanceof Error ? e.message : e}`));
   const fileInput = useRef<HTMLInputElement>(null);
   const sendable = !!input.trim() || attachments.length > 0;
 
@@ -89,17 +84,18 @@ export function Composer(props: {
       <div className="flex min-w-0 items-center gap-1">
         <Button variant="ghost" className="px-2.5 md:hidden" title="历史对话" icon={<History className="size-5" />} onClick={props.onShowHistory} />
         <Button variant="ghost" className="px-2.5" title="附加图片或视频" loading={props.uploading} icon={<Paperclip className="size-5" />} onClick={() => fileInput.current?.click()} />
-        <AgentMenu agents={props.agents} current={props.agent} onChange={props.onAgent} onOpen={props.onRefreshAgents} />
-        <ToolsMenu value={props.settings} onChange={props.onSettings} />
-        <ModelMenu
-          models={props.models}
-          defaultId={props.defaultModel}
-          value={props.settings.model ?? null}
-          onChange={(model) => props.onSettings({ ...props.settings, model })}
-          onOpen={props.onRefreshModels}
-        />
-        <ReasoningMenu value={props.reasoning} onChange={props.onReasoning} />
-        <Button variant="ghost" className="px-2.5" title="参数" icon={<SlidersHorizontal className="size-5" />} onClick={props.onTogglePanel} />
+        {settings && (
+          <>
+            <ToolsMenu value={settings} onChange={save} />
+            <ModelMenu
+              models={props.models}
+              value={settings.chat_model ?? props.defaultModel}
+              onChange={(chat_model) => save({ chat_model })}
+              onOpen={props.onRefreshModels}
+            />
+            <ReasoningMenu value={settings.reasoning} onChange={(reasoning) => save({ reasoning })} />
+          </>
+        )}
         <div className="flex-1" />
         {running ? (
           <Button variant="primary" className="size-10 shrink-0 rounded-full p-0" title="停止任务" icon={<Square className="size-4" />} onClick={props.onStop} />

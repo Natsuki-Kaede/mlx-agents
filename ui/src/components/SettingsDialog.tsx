@@ -1,23 +1,21 @@
 import { X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AgentsSection } from "./settings/AgentsSection";
 import { GeneralSection } from "./settings/GeneralSection";
 import { McpSection } from "./settings/McpSection";
 import { MemorySection } from "./settings/MemorySection";
 import { ModelsSection } from "./settings/ModelsSection";
 import { ErrorNote, Glass, Segmented, spring } from "./ui";
 
-export type SettingsTab = "general" | "agents" | "models" | "mcp" | "memory";
+export type SettingsTab = "general" | "models" | "mcp" | "memory";
 const TABS: { value: SettingsTab; label: string; render: (onError: (e: string | null) => void) => ReactNode }[] = [
   { value: "general", label: "通用", render: (onError) => <GeneralSection onError={onError} /> },
-  { value: "agents", label: "Agents", render: (onError) => <AgentsSection onError={onError} /> },
   { value: "models", label: "模型", render: (onError) => <ModelsSection onError={onError} /> },
   { value: "mcp", label: "MCP", render: (onError) => <McpSection onError={onError} /> },
   { value: "memory", label: "记忆", render: (onError) => <MemorySection onError={onError} /> },
 ];
 
-/** App settings: workspace, agents, models, MCP servers, long-term memory. */
+/** App settings: workspace, global instructions and parameters, models, MCP servers, long-term memory. */
 export function SettingsDialog({ open, initialTab, onClose }: { open: boolean; initialTab?: SettingsTab; onClose: () => void }) {
   const [tab, setTab] = useState<SettingsTab>("general");
   const [error, setError] = useState<string | null>(null);
