@@ -1,0 +1,35 @@
+[project]
+name = "mlx-agents"
+version = "0.1.0"
+description = "Local LLM agents on Apple silicon: chat, vision, image generation, files, commands, MCP tools and sub-agents, all running on MLX."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Model runtimes. Pinned: the engine relies on their internals (template kwargs, mflux component loading).
+    "mlx==0.32.4",
+    "mlx-lm==0.32.2",
+    "mlx-vlm==0.7.8",
+    "mflux==0.23.0",
+    "transformers==5.20.1",
+    "huggingface-hub>=1.33",
+    # Server and desktop client
+    "fastapi>=0.148",
+    "uvicorn>=0.54",
+    "python-multipart>=0.0.32",
+    "pywebview>=6.2.1",
+    "pyobjc-framework-Cocoa>=12.2",
+    # Tools
+    "ddgs>=9.16",
+    "trafilatura>=2.3.1",
+    "httpx>=0.28.1",
+    "mcp>=2.3,<3",
+    # Pillow 13 breaks mflux's image loading on Python 3.12.
+    "pillow>=12.3,<13",
+]
+
+[tool.uv]
+package = false
+# MLX runs on Apple silicon only.
+# Keep mlx-vlm's audio dependency at the version the engine was tested with.
+constraint-dependencies = ["mlx-audio==0.5.9"]
+environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'"]
