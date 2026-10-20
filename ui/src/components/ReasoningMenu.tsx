@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { Brain, Check, ChevronUp } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import type { Reasoning } from "../api";
@@ -39,42 +39,39 @@ export function ReasoningMenu({ value, onChange }: { value: Reasoning; onChange:
           <ChevronUp className="size-3.5" />
         </motion.span>
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            role="menu"
-            initial={{ opacity: 0, y: 8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.96 }}
-            transition={spring}
-            style={{ originX: 1, originY: 1 }}
-            className="glass glass-solid absolute right-2 bottom-full z-30 mb-2 max-w-[calc(100%-1rem)] w-60 rounded-2xl p-1.5"
-          >
-            <div className="ink-faint px-2.5 pt-1 pb-1.5 text-[11px] font-medium">推理等级</div>
-            {REASONING.map((r) => (
-              <button
-                key={r.value}
-                type="button"
-                role="menuitemradio"
-                aria-checked={r.value === value}
-                onClick={() => {
-                  onChange(r.value);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-[var(--glass-fill-strong)] ${
-                  r.value === value ? "bg-[var(--glass-fill)]" : ""
-                }`}
-              >
-                <div className="flex-1">
-                  <div className="text-[13px] font-medium">{r.label}</div>
-                  <div className="ink-soft text-[11px]">{r.hint}</div>
-                </div>
-                {r.value === value && <Check className="size-4 text-[var(--accent)]" />}
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {open && (
+        <motion.div
+          role="menu"
+          initial={{ y: 8, scale: 0.96 }}
+          animate={{ y: 0, scale: 1 }}
+          transition={spring}
+          style={{ originX: 1, originY: 1 }}
+          className="glass glass-solid absolute right-2 bottom-full z-30 mb-2 max-w-[calc(100%-1rem)] w-60 rounded-2xl p-1.5"
+        >
+          <div className="ink-faint px-2.5 pt-1 pb-1.5 text-[11px] font-medium">推理等级</div>
+          {REASONING.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={r.value === value}
+              onClick={() => {
+                onChange(r.value);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-[var(--glass-fill-strong)] ${
+                r.value === value ? "bg-[var(--glass-fill)]" : ""
+              }`}
+            >
+              <div className="flex-1">
+                <div className="text-[13px] font-medium">{r.label}</div>
+                <div className="ink-soft text-[11px]">{r.hint}</div>
+              </div>
+              {r.value === value && <Check className="size-4 text-[var(--accent)]" />}
+            </button>
+          ))}
+        </motion.div>
+      )}
     </div>
   );
 }

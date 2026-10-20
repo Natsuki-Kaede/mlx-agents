@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import { Brain, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type Memory } from "../../api";
@@ -32,7 +31,7 @@ export function MemorySection({ onError }: { onError: (e: string | null) => void
       <div className="ink-faint text-xs">每段对话都会带上这些内容。Agent 也会在你表达偏好时自己记住。</div>
       <div className="space-y-1.5">
         {memories.map((m) => (
-          <motion.div key={m.id} layout className="glass flex items-start gap-2 rounded-xl px-3 py-2 text-[13px]">
+          <div key={m.id} className="glass flex items-start gap-2 rounded-xl px-3 py-2 text-[13px]">
             <span className="flex-1 leading-relaxed">{m.text}</span>
             <button
               type="button"
@@ -47,7 +46,7 @@ export function MemorySection({ onError }: { onError: (e: string | null) => void
             >
               <Trash2 className="size-3.5" />
             </button>
-          </motion.div>
+          </div>
         ))}
         {!memories.length && <div className="ink-faint py-2 text-center text-xs">还没有记忆</div>}
       </div>

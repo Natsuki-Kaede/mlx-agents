@@ -1,13 +1,11 @@
-import { motion } from "motion/react";
 import { CheckCircle2, Circle, ListChecks, Loader2 } from "lucide-react";
 import type { PlanStep } from "../api";
-import { spring } from "./ui";
 
 /** The agent's step-by-step plan for a multi-step task. */
 export function PlanCard({ plan, live }: { plan: PlanStep[]; live: boolean }) {
   const done = plan.filter((s) => s.status === "done").length;
   return (
-    <motion.div layout transition={spring} className="glass w-full rounded-2xl px-3.5 py-3">
+    <div className="glass w-full rounded-2xl px-3.5 py-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-medium">
         <ListChecks className="size-3.5 text-[var(--accent)]" />
         计划
@@ -20,7 +18,7 @@ export function PlanCard({ plan, live }: { plan: PlanStep[]; live: boolean }) {
       </div>
       <ol className="space-y-1">
         {plan.map((step, i) => (
-          <motion.li key={i} layout className="flex items-start gap-2 text-[13px] leading-snug">
+          <li key={i} className="flex items-start gap-2 text-[13px] leading-snug">
             {step.status === "done" ? (
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[var(--ok)]" />
             ) : step.status === "in_progress" ? (
@@ -31,9 +29,9 @@ export function PlanCard({ plan, live }: { plan: PlanStep[]; live: boolean }) {
             <span className={step.status === "done" ? "ink-soft line-through decoration-[var(--ink-faint)]" : step.status === "in_progress" ? "font-medium" : "ink-soft"}>
               {step.text}
             </span>
-          </motion.li>
+          </li>
         ))}
       </ol>
-    </motion.div>
+    </div>
   );
 }

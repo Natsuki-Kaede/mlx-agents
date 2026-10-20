@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import {
   AlertCircle,
   Ban,
@@ -288,9 +288,8 @@ function ToolCard({ tool, all }: { tool: ToolEvent; all: ToolEvent[] }) {
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ y: 6 }}
+      animate={{ y: 0 }}
       transition={spring}
       className={`glass rounded-2xl px-3.5 py-2.5 ${waiting ? "ring-2 ring-[color-mix(in_srgb,var(--warn)_55%,transparent)]" : ""}`}
     >
@@ -308,13 +307,7 @@ function ToolCard({ tool, all }: { tool: ToolEvent; all: ToolEvent[] }) {
       {waiting && <Approval tool={tool} />}
       {tool.name === "generate_image" && tool.image && (
         <a href={tool.image} target="_blank" rel="noreferrer" className="mt-2 block">
-          <motion.img
-            initial={{ opacity: 0, filter: "blur(10px)" }}
-            animate={{ opacity: 1, filter: "blur(0px)" }}
-            src={tool.image}
-            className="max-h-80 rounded-xl"
-            alt={String(tool.args.prompt ?? "")}
-          />
+          <img src={tool.image} className="max-h-80 rounded-xl" alt={String(tool.args.prompt ?? "")} />
         </a>
       )}
       {tool.name === "generate_image" && tool.status === "running" && job && job.total > 0 && (
@@ -324,13 +317,7 @@ function ToolCard({ tool, all }: { tool: ToolEvent; all: ToolEvent[] }) {
       )}
       {tool.name === "generate_image" && tool.status === "done" && <ImageActions tool={tool} />}
       {tool.name === "delegate_task" && <SubAgent tool={tool} all={all} />}
-      <AnimatePresence initial={false}>
-        {open && body && !waiting && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            {body}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {open && body && !waiting && body}
     </motion.div>
   );
 }

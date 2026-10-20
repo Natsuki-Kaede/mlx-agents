@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { Copy, Download, RefreshCw, Repeat2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -34,9 +34,8 @@ export function GalleryPage({ active, onReuse }: { active: boolean; onReuse: (me
           <motion.button
             key={item.file}
             type="button"
-            layoutId={`card-${item.file}`}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ y: 16 }}
+            animate={{ y: 0 }}
             transition={{ ...spring, delay: Math.min(i, 12) * 0.035 }}
             whileHover={{ y: -4 }}
             onClick={() => setOpen(item)}
@@ -49,17 +48,11 @@ export function GalleryPage({ active, onReuse }: { active: boolean; onReuse: (me
       </div>
 
       {createPortal(
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setOpen(null)}
-          >
+        open && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4 backdrop-blur-sm" onClick={() => setOpen(null)}>
             <Glass
-              layoutId={`card-${open.file}`}
+              initial={{ y: 16, scale: 0.97 }}
+              animate={{ y: 0, scale: 1 }}
               transition={spring}
               onClick={(e) => e.stopPropagation()}
               className="glass-solid grid max-h-[92dvh] w-full max-w-6xl gap-5 overflow-hidden p-4 md:grid-cols-[1.3fr_1fr]"
@@ -112,9 +105,8 @@ export function GalleryPage({ active, onReuse }: { active: boolean; onReuse: (me
                 </div>
               </div>
             </Glass>
-          </motion.div>
-        )}
-      </AnimatePresence>,
+          </div>
+        ),
         document.body,
       )}
     </div>

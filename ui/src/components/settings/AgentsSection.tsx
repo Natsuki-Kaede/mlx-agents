@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AGENTS_CHANGED, DEFAULT_AGENT, NO_PERMISSIONS, api, type AgentProfile, type ModelInfo } from "../../api";
@@ -139,7 +138,7 @@ export function AgentsSection({ onError }: { onError: (e: string | null) => void
         每个 agent 有自己的指令、默认工具和模型。在输入框左下角切换；对话里还可以再单独调整工具和模型。
       </div>
       {agents.map((a) => (
-        <motion.div key={a.id} layout className="glass flex items-center gap-3 rounded-xl px-3 py-2.5">
+        <div key={a.id} className="glass flex items-center gap-3 rounded-xl px-3 py-2.5">
           <span className="text-xl leading-none">{a.icon}</span>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[13px] font-medium">{a.name}</div>
@@ -150,7 +149,7 @@ export function AgentsSection({ onError }: { onError: (e: string | null) => void
           <button type="button" title="编辑" onClick={() => setEditing({ ...a, permissions: { ...NO_PERMISSIONS, ...a.permissions } })} className="ink-soft grid size-8 shrink-0 place-items-center rounded-full hover:bg-[var(--glass-fill-strong)]">
             <Pencil className="size-3.5" />
           </button>
-        </motion.div>
+        </div>
       ))}
       <Button className="w-full" icon={<Plus className="size-4" />} onClick={() => setEditing(BLANK)}>
         新建 agent

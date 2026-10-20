@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { Brain, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Markdown, countChars } from "./Markdown";
@@ -24,23 +24,13 @@ export function ThinkingBlock({ text, tokens, active }: { text: string; tokens?:
           <ChevronDown className="size-3.5" />
         </motion.span>
       </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden"
-          >
-            <div ref={ref} className="scroll-soft mt-2 max-h-72 overflow-y-auto border-l-2 border-[var(--glass-edge)] pl-3 text-[13px]">
-              <div ref={contentRef}>
-                <Markdown text={text} streaming={active} className="ink-soft" />
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {open && (
+        <div ref={ref} className="scroll-soft mt-2 max-h-72 overflow-y-auto border-l-2 border-[var(--glass-edge)] pl-3 text-[13px]">
+          <div ref={contentRef}>
+            <Markdown text={text} streaming={active} className="ink-soft" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

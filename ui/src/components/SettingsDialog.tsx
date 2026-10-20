@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -37,13 +36,11 @@ export function SettingsDialog({ open, initialTab, onClose }: { open: boolean; i
   }, [open, onClose]);
 
   return createPortal(
-    <AnimatePresence>
-      {open && (
-        <motion.div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    open && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4 backdrop-blur-sm" onClick={onClose}>
           <Glass
-            initial={{ opacity: 0, y: 16, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.97 }}
+            initial={{ y: 16, scale: 0.97 }}
+            animate={{ y: 0, scale: 1 }}
             transition={spring}
             onClick={(e) => e.stopPropagation()}
             className="glass-solid flex max-h-[88dvh] w-full max-w-2xl flex-col gap-4 p-6"
@@ -54,13 +51,12 @@ export function SettingsDialog({ open, initialTab, onClose }: { open: boolean; i
                 <X className="size-4" />
               </button>
             </div>
-            <Segmented id="settings-tab" options={TABS.map(({ value, label }) => ({ value, label }))} value={tab} onChange={setTab} />
+            <Segmented options={TABS.map(({ value, label }) => ({ value, label }))} value={tab} onChange={setTab} />
             <div className="scroll-soft -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">{TABS.find((t) => t.value === tab)!.render(setError)}</div>
             <ErrorNote error={error} />
           </Glass>
-        </motion.div>
-      )}
-    </AnimatePresence>,
+        </div>
+      ),
     document.body,
   );
 }

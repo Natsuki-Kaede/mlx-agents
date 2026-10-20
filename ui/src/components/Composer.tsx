@@ -42,7 +42,7 @@ export function Composer(props: {
       {!!attachments.length && (
         <div className="flex flex-wrap gap-2 px-1 pb-2">
           {attachments.map((a) => (
-            <motion.div key={a.id} layout initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative">
+            <motion.div key={a.id} initial={{ scale: 0.85 }} animate={{ scale: 1 }} className="relative">
               {a.kind === "video" ? (
                 <div className="glass grid size-16 place-items-center rounded-xl">
                   <Film className="size-5" />

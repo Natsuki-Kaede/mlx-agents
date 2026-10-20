@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { ArrowDown, ImageIcon, MessageSquarePlus, ScanSearch, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -143,6 +143,8 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       setTurns((ts) => [...ts, live]);
       try {
         for await (const ev of runEvents(info.id, 0, controller.signal)) {
+          // Events already buffered when another chat was opened must not touch the new chat's turns.
+          if (controller.signal.aborted) return;
           if (ev.type === "status") setRun((r) => r && { ...r, status: ev.status });
           if (ev.type === "status" && ev.note) setNotice(ev.note);
           if (ev.type === "auto_approve") setSettings((s) => ({ ...s, autoApprove: ev.auto_approve }));
@@ -306,7 +308,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       <div className="scroll-soft -mx-1 flex-1 space-y-1 overflow-y-auto px-1">
         {chats.length === 0 && <div className="ink-faint px-2 py-6 text-center text-xs">还没有历史对话</div>}
         {chats.map((c) => (
-          <motion.div key={c.id} layout transition={spring} className="group relative">
+          <div key={c.id} className="group relative">
             <button
               type="button"
               onClick={() => openChat(c.id)}
@@ -329,7 +331,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             >
               <Trash2 className="size-3.5" />
             </button>
-          </motion.div>
+          </div>
         ))}
       </div>
     </Glass>
@@ -340,21 +342,13 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       <div className="mx-auto grid h-[calc(100dvh-112px)] max-w-6xl gap-4 md:grid-cols-[250px_minmax(0,1fr)]">
         <div className="hidden min-h-0 md:block">{sidebar}</div>
         {createPortal(
-          <AnimatePresence>
-            {showHistory && (
-              <motion.div
-                className="fixed inset-0 z-50 bg-black/30 p-4 backdrop-blur-sm md:hidden"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setShowHistory(false)}
-              >
-                <motion.div initial={{ x: -24 }} animate={{ x: 0 }} exit={{ x: -24 }} className="h-full max-w-xs" onClick={(e) => e.stopPropagation()}>
-                  {sidebar}
-                </motion.div>
+          showHistory && (
+            <div className="fixed inset-0 z-50 bg-black/30 p-4 backdrop-blur-sm md:hidden" onClick={() => setShowHistory(false)}>
+              <motion.div initial={{ x: -24 }} animate={{ x: 0 }} className="h-full max-w-xs" onClick={(e) => e.stopPropagation()}>
+                {sidebar}
               </motion.div>
-            )}
-          </AnimatePresence>,
+            </div>
+          ),
           document.body,
         )}
 
@@ -363,7 +357,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             <div ref={list} className="scroll-soft h-full overflow-y-auto px-1">
               <div ref={contentRef} className="min-h-full space-y-4 pb-2">
                 {turns.length === 0 && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid min-h-[60dvh] place-items-center">
+                  <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="grid min-h-[60dvh] place-items-center">
                     <div className="max-w-md text-center">
                       <div className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] bg-clip-text text-3xl font-semibold text-transparent">
                         今天要做点什么？
@@ -390,131 +384,122 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
                     </div>
                   </motion.div>
                 )}
-                <AnimatePresence initial={false}>
-                  {turns.map((turn, i) => {
-                    const live = running && i === turns.length - 1 && turn.role === "assistant";
-                    const idle = live && !turn.content && !turn.thinking && !turn.tools?.length && !turn.plan?.length;
-                    return (
-                      <motion.div
-                        key={`${chatId}-${i}`}
-                        layout="position"
-                        initial={{ opacity: 0, y: 14, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        transition={spring}
-                        className={`flex ${turn.role === "user" ? "justify-end" : "justify-start"}`}
-                      >
-                        <div className={`max-w-[85%] ${turn.role === "user" ? "items-end" : "w-full items-start"} flex flex-col gap-2`}>
-                          {turn.role === "user" && turn.mode && turn.mode !== "chat" && (
-                            <span className="ink-soft inline-flex items-center gap-1 text-[11px]">
-                              {turn.mode === "image" ? <ImageIcon className="size-3" /> : <ScanSearch className="size-3" />}
-                              {turn.mode === "image" ? "生图" : "反推"}
-                            </span>
-                          )}
-                          {!!turn.attachments?.length && (
-                            <div className="flex flex-wrap justify-end gap-2">
-                              {turn.attachments.map((a) =>
-                                a.kind === "video" ? (
-                                  <video key={a.id} src={a.url} className="h-36 rounded-2xl" controls muted />
+                {turns.map((turn, i) => {
+                  const live = running && i === turns.length - 1 && turn.role === "assistant";
+                  const idle = live && !turn.content && !turn.thinking && !turn.tools?.length && !turn.plan?.length;
+                  return (
+                    <motion.div
+                      key={`${chatId}-${i}`}
+                      initial={{ y: 14, scale: 0.98 }}
+                      animate={{ y: 0, scale: 1 }}
+                      transition={spring}
+                      className={`flex ${turn.role === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div className={`max-w-[85%] ${turn.role === "user" ? "items-end" : "w-full items-start"} flex flex-col gap-2`}>
+                        {turn.role === "user" && turn.mode && turn.mode !== "chat" && (
+                          <span className="ink-soft inline-flex items-center gap-1 text-[11px]">
+                            {turn.mode === "image" ? <ImageIcon className="size-3" /> : <ScanSearch className="size-3" />}
+                            {turn.mode === "image" ? "生图" : "反推"}
+                          </span>
+                        )}
+                        {!!turn.attachments?.length && (
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {turn.attachments.map((a) =>
+                              a.kind === "video" ? (
+                                <video key={a.id} src={a.url} className="h-36 rounded-2xl" controls muted />
+                              ) : (
+                                <img key={a.id} src={a.url} className="h-36 rounded-2xl object-cover" alt="" />
+                              ),
+                            )}
+                          </div>
+                        )}
+                        {turn.role === "user" ? (
+                          !!turn.content && (
+                            <div className="accent-fill rounded-3xl rounded-br-lg px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap">{turn.content}</div>
+                          )
+                        ) : turn.describe ? (
+                          <DescribeCard data={turn.describe} />
+                        ) : (
+                          <>
+                            {!!turn.plan?.length && <PlanCard plan={turn.plan} live={live} />}
+                            {!!turn.thinking && (
+                              <ThinkingBlock text={turn.thinking} tokens={turn.tokens?.thinking} active={live && !turn.content && !turn.tools?.length} />
+                            )}
+                            {!!turn.tools?.length && <ToolTimeline tools={turn.tools} />}
+                            {(turn.content || idle) && (
+                              <div className="glass rounded-3xl rounded-bl-lg px-4 py-3 text-[15px]">
+                                {turn.content ? (
+                                  <Markdown text={turn.content} streaming={live} />
                                 ) : (
-                                  <img key={a.id} src={a.url} className="h-36 rounded-2xl object-cover" alt="" />
-                                ),
-                              )}
-                            </div>
-                          )}
-                          {turn.role === "user" ? (
-                            !!turn.content && (
-                              <div className="accent-fill rounded-3xl rounded-br-lg px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap">{turn.content}</div>
-                            )
-                          ) : turn.describe ? (
-                            <DescribeCard data={turn.describe} />
-                          ) : (
-                            <>
-                              {!!turn.plan?.length && <PlanCard plan={turn.plan} live={live} />}
-                              {!!turn.thinking && (
-                                <ThinkingBlock text={turn.thinking} tokens={turn.tokens?.thinking} active={live && !turn.content && !turn.tools?.length} />
-                              )}
-                              {!!turn.tools?.length && <ToolTimeline tools={turn.tools} />}
-                              {(turn.content || idle) && (
-                                <div className="glass rounded-3xl rounded-bl-lg px-4 py-3 text-[15px]">
-                                  {turn.content ? (
-                                    <Markdown text={turn.content} streaming={live} />
-                                  ) : (
-                                    <span className="shimmer-text">{run?.status === "queued" ? "排队中…" : "正在思考…"}</span>
-                                  )}
-                                </div>
-                              )}
-                            </>
-                          )}
-                          {turn.role === "assistant" && !turn.describe && turn.mode !== "image" && (turn.content || turn.stats) && (
-                            <div className="ink-faint flex flex-wrap gap-x-1.5 px-2 text-[11px] tabular-nums">
-                              {live && <span className="shimmer-text font-medium">执行中</span>}
+                                  <span className="shimmer-text">{run?.status === "queued" ? "排队中…" : "正在思考…"}</span>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                        {turn.role === "assistant" && !turn.describe && turn.mode !== "image" && (turn.content || turn.stats) && (
+                          <div className="ink-faint flex flex-wrap gap-x-1.5 px-2 text-[11px] tabular-nums">
+                            {live && <span className="shimmer-text font-medium">执行中</span>}
+                            <span>
+                              {turn.tokens ? `${turn.tokens.answer} tokens · ` : ""}
+                              {countChars(turn.content)} 字
+                            </span>
+                            {turn.stats && (
                               <span>
-                                {turn.tokens ? `${turn.tokens.answer} tokens · ` : ""}
-                                {countChars(turn.content)} 字
+                                · {turn.stats.seconds} 秒（含加载 {turn.stats.load_seconds} 秒）
+                                {turn.stats.generation_tps ? ` · ${turn.stats.generation_tps} tok/s` : ""} · 峰值 {turn.stats.peak_mlx_gb} GB
                               </span>
-                              {turn.stats && (
-                                <span>
-                                  · {turn.stats.seconds} 秒（含加载 {turn.stats.load_seconds} 秒）
-                                  {turn.stats.generation_tps ? ` · ${turn.stats.generation_tps} tok/s` : ""} · 峰值 {turn.stats.peak_mlx_gb} GB
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             </div>
-            <AnimatePresence>
-              {!atBottom && turns.length > 0 && (
-                <motion.button
-                  type="button"
-                  initial={{ opacity: 0, y: 8, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 8, scale: 0.9 }}
-                  transition={spring}
-                  onClick={() => scrollToBottom()}
-                  className="glass glass-strong absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium"
-                >
-                  <ArrowDown className="size-3.5" />
-                  {running ? "跟随最新进展" : "回到底部"}
-                </motion.button>
-              )}
-            </AnimatePresence>
+            {!atBottom && turns.length > 0 && (
+              <motion.button
+                type="button"
+                initial={{ y: 8, scale: 0.9 }}
+                animate={{ y: 0, scale: 1 }}
+                transition={spring}
+                onClick={() => scrollToBottom()}
+                className="glass glass-strong absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium"
+              >
+                <ArrowDown className="size-3.5" />
+                {running ? "跟随最新进展" : "回到底部"}
+              </motion.button>
+            )}
           </div>
 
           <ErrorNote error={error} />
           {notice && <div className="ink-soft glass rounded-2xl px-4 py-2.5 text-xs">{notice}</div>}
 
-          <AnimatePresence>
-            {showPanel && (
-              <Glass
-                initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 12, scale: 0.98 }}
-                transition={spring}
-                className="grid gap-4 p-5 sm:grid-cols-2"
-              >
-                <div className="sm:col-span-2">
-                  <Label>额外要求（每条消息都会带上，可留空）</Label>
-                  <textarea className="field min-h-16" value={system} onChange={(e) => setUi((u) => ({ ...u, system: e.target.value }))} />
-                </div>
-                {(
-                  [
-                    ["max_tokens", "每轮最大生成长度", 64, 4096, 64, (v: number) => `${v} tokens`],
-                    ["temperature", "温度", 0, 1.5, 0.05, (v: number) => v.toFixed(2)],
-                    ["repetition_penalty", "重复惩罚", 1, 1.5, 0.05, (v: number) => v.toFixed(2)],
-                    ["fps", "视频采样帧率", 0.5, 4, 0.5, (v: number) => `${v} fps`],
-                    ["max_frames", "视频最多帧数", 4, 64, 4, (v: number) => `${v} 帧`],
-                  ] as const
-                ).map(([key, label, min, max, step, format]) => (
-                  <Slider key={key} label={label} value={params[key]} min={min} max={max} step={step} format={format} onChange={(v) => setParam(key, v)} />
-                ))}
-              </Glass>
-            )}
-          </AnimatePresence>
+          {showPanel && (
+            <Glass
+              initial={{ y: 12, scale: 0.98 }}
+              animate={{ y: 0, scale: 1 }}
+              transition={spring}
+              className="grid gap-4 p-5 sm:grid-cols-2"
+            >
+              <div className="sm:col-span-2">
+                <Label>额外要求（每条消息都会带上，可留空）</Label>
+                <textarea className="field min-h-16" value={system} onChange={(e) => setUi((u) => ({ ...u, system: e.target.value }))} />
+              </div>
+              {(
+                [
+                  ["max_tokens", "每轮最大生成长度", 64, 4096, 64, (v: number) => `${v} tokens`],
+                  ["temperature", "温度", 0, 1.5, 0.05, (v: number) => v.toFixed(2)],
+                  ["repetition_penalty", "重复惩罚", 1, 1.5, 0.05, (v: number) => v.toFixed(2)],
+                  ["fps", "视频采样帧率", 0.5, 4, 0.5, (v: number) => `${v} fps`],
+                  ["max_frames", "视频最多帧数", 4, 64, 4, (v: number) => `${v} 帧`],
+                ] as const
+              ).map(([key, label, min, max, step, format]) => (
+                <Slider key={key} label={label} value={params[key]} min={min} max={max} step={step} format={format} onChange={(v) => setParam(key, v)} />
+              ))}
+            </Glass>
+          )}
 
           <Composer
             input={input}

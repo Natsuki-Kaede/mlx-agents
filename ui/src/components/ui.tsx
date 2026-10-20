@@ -90,12 +90,10 @@ export function Slider({
 }
 
 export function Segmented<T extends string>({
-  id,
   options,
   value,
   onChange,
 }: {
-  id: string;
   options: { value: T; label: ReactNode }[];
   value: T;
   onChange: (v: T) => void;
@@ -109,13 +107,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className="relative flex-1 rounded-xl px-3 py-1.5 text-[13px] font-medium"
         >
-          {value === o.value && (
-            <motion.span
-              layoutId={`seg-${id}`}
-              transition={spring}
-              className="glass glass-strong absolute inset-0 rounded-xl"
-            />
-          )}
+          {value === o.value && <span className="glass glass-strong absolute inset-0 rounded-xl" />}
           <span className={`relative ${value === o.value ? "" : "ink-soft"}`}>{o.label}</span>
         </button>
       ))}
@@ -129,12 +121,7 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
       <span
         className={`relative h-6 w-10 rounded-full transition-colors ${checked ? "accent-fill" : "bg-[var(--glass-fill-strong)]"}`}
       >
-        <motion.span
-          layout
-          transition={spring}
-          className="absolute top-0.5 size-5 rounded-full bg-white shadow"
-          style={{ left: checked ? 18 : 2 }}
-        />
+        <span className="absolute top-0.5 size-5 rounded-full bg-white shadow" style={{ left: checked ? 18 : 2 }} />
       </span>
       {label}
     </button>
@@ -145,8 +132,8 @@ export function ErrorNote({ error }: { error: string | null }) {
   if (!error) return null;
   return (
     <motion.div
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ y: -4 }}
+      animate={{ y: 0 }}
       className="rounded-2xl border border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-3 text-sm"
     >
       {error}

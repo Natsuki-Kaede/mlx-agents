@@ -3,7 +3,6 @@ import { Images, MessagesSquare, Moon, Settings, Sparkle, Sun, SunMoon, Wind } f
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type OutputMeta, type Status } from "./api";
 import { SettingsDialog, type SettingsTab } from "./components/SettingsDialog";
-import { spring } from "./components/ui";
 import { ChatPage } from "./pages/Chat";
 import { GalleryPage } from "./pages/Gallery";
 
@@ -65,7 +64,7 @@ function StatusPill({ status, offline }: { status: Status | null; offline: boole
         ? `执行中 · ${status!.runs} 个任务`
         : "空闲";
   return (
-    <motion.div layout className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-xs">
+    <div className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-xs">
       <span className="relative flex size-2.5">
         {(busy || offline) && <span className="absolute inline-flex size-full animate-ping rounded-full opacity-60" style={{ background: tone }} />}
         <span className="relative inline-flex size-2.5 rounded-full" style={{ background: tone }} />
@@ -77,7 +76,7 @@ function StatusPill({ status, offline }: { status: Status | null; offline: boole
           {status.active_gb.toFixed(1)} GB
         </span>
       )}
-    </motion.div>
+    </div>
   );
 }
 
@@ -86,7 +85,7 @@ function Page({ active, children }: { active: boolean; children: ReactNode }) {
     <motion.main
       hidden={!active}
       initial={false}
-      animate={active ? { opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } } : { opacity: 0, y: 14, filter: "blur(10px)" }}
+      animate={{ y: active ? 0 : 14 }}
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
@@ -164,7 +163,7 @@ export default function App() {
           <nav className="glass glass-refract flex gap-1 rounded-full p-1">
             {TABS.map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" onClick={() => go(id)} className="relative rounded-full px-3.5 py-2 text-sm font-medium sm:px-4">
-                {tab === id && <motion.span layoutId="nav-pill" transition={spring} className="accent-fill absolute inset-0 rounded-full" />}
+                {tab === id && <span className="accent-fill absolute inset-0 rounded-full" />}
                 <span className={`relative flex items-center gap-1.5 ${tab === id ? "text-white" : "ink-soft"}`}>
                   <Icon className="size-4" />
                   <span className="hidden sm:inline">{label}</span>
