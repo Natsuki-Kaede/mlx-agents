@@ -25,6 +25,7 @@ dependencies = [
     "mcp>=2.3,<3",
     # Pillow 13 breaks mflux's image loading on Python 3.12.
     "pillow>=12.3,<13",
+    "psutil>=7",
 ]
 
 [tool.uv]

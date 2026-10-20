@@ -71,9 +71,8 @@ function StatusPill({ status, offline }: { status: Status | null; offline: boole
       </span>
       <span className="font-medium">{text}</span>
       {status && (
-        <span className="ink-soft hidden max-w-64 truncate tabular-nums sm:inline">
-          {status.loaded ? `${status.loaded} · ` : ""}
-          {status.active_gb.toFixed(1)} GB
+        <span className="ink-soft hidden tabular-nums sm:inline" title="整机 CPU 占用 · GPU 占用 · 当前模型占用的内存">
+          CPU {status.cpu}%{status.gpu !== null && ` · GPU ${status.gpu}%`} · 模型 {status.active_gb.toFixed(1)} GB
         </span>
       )}
     </div>

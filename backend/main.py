@@ -6,11 +6,14 @@ Served only by the desktop client (desktop/app.py), which runs it on a loopback 
 
 import asyncio
 import json
+import re
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Literal
 
+import psutil
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -79,9 +82,23 @@ def checked_chat_id(chat_id: str) -> str:
     return chat_id
 
 
+GPU_UTILIZATION = re.compile(r'"Device Utilization %"=(\d+)')
+
+
+def gpu_utilization() -> int | None:
+    """GPU busy percentage as the GPU driver reports it (ioreg; no special permissions needed)."""
+    try:
+        out = subprocess.run(["ioreg", "-r", "-d", "1", "-c", "IOAccelerator"], capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    match = GPU_UTILIZATION.search(out)
+    return int(match.group(1)) if match else None
+
+
 @app.get("/api/status")
 def status():
-    return engine.status() | {"runs": agent.active()}
+    # cpu_percent(None) measures since the previous call, i.e. across the client's polling interval.
+    return engine.status() | {"runs": agent.active(), "cpu": round(psutil.cpu_percent(None)), "gpu": gpu_utilization()}
 
 
 # ----- uploads -----
