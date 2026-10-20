@@ -88,7 +88,7 @@ def checked_chat_id(chat_id: str) -> str:
 
 @app.get("/api/status")
 def status():
-    return engine.status()
+    return engine.status() | {"runs": agent.active()}
 
 
 # ----- uploads -----

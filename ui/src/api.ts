@@ -1,5 +1,5 @@
 export type Upload = { id: string; kind: "image" | "video"; url: string };
-export type Status = { loaded: string | null; loaded_kind: "chat" | "image" | null; busy: string | null; pending: number; active_gb: number };
+export type Status = { loaded: string | null; loaded_kind: "chat" | "image" | null; busy: string | null; pending: number; active_gb: number; runs: number };
 export type ModelInfo = {
   id: string;
   kind: "chat" | "image";

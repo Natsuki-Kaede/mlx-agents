@@ -26,6 +26,7 @@ from ddgs import DDGS
 from PIL import Image
 
 from backend import store
+from backend.engine import Cancelled
 
 SEARCH_RESULTS = 6
 PAGE_CHARS = 6000  # ~4k tokens of page text per read keeps the context within what a 16 GB Mac holds
@@ -200,12 +201,15 @@ def _generate_image(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     width, height = ASPECTS.get(aspect, ASPECTS["1:1"])
     steps = min(60, max(8, int(args.get("steps") or 40)))
     seed = int(args["seed"]) if args.get("seed") not in (None, "", -1) else None
-    job = ctx.engine.generate_inline(
-        {"prompt": prompt, "width": width, "height": height, "steps": steps, "seed": seed, "step_cache": 0,
-         "init_image": reference, "image_strength": strength, "source": {"agent": True}, "model": None},
-        on_start=lambda job_id: ctx.update(job=job_id),
-        cancelled=ctx.cancelled,
-    )
+    try:
+        job = ctx.engine.call(
+            "image", ctx.engine.generate_inline,
+            {"prompt": prompt, "width": width, "height": height, "steps": steps, "seed": seed, "step_cache": 0,
+             "init_image": reference, "image_strength": strength, "source": {"agent": True}, "model": None},
+            on_start=lambda job_id: ctx.update(job=job_id), cancelled=ctx.cancelled, abort=ctx.cancelled,
+        )
+    except Cancelled as exc:
+        raise ToolError("已取消") from exc
     if job.status != "done":
         raise ToolError(job.error or "生图失败")
     r = job.result

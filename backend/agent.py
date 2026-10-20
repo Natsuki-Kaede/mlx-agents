@@ -1,4 +1,5 @@
-"""Agent runs: one user message → a model/tool loop on the MLX thread, owned by the backend.
+"""Agent runs: one user message → a model/tool loop on its own thread, owned by the backend. Model work is
+queued on the engine's MLX thread; tools and approval waits run on the run's thread, so other chats keep going.
 
 A run records its events (streamed text, tool cards, plan, approvals) so clients can attach, detach and
 replay at any time; it saves the user turn when it starts and the assistant turn when it ends, so closing the
@@ -15,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from backend import mcp_servers, store
+from backend.engine import Cancelled
 from backend.tools import TOOLS, Tool, ToolError, available
 
 MAX_TOOL_ROUNDS = 30  # the round after the last one offers no tools, so the model has to answer
@@ -209,14 +211,17 @@ class Agent:
         finished = [r for r in self.runs.values() if r.finished]
         for old in sorted(finished, key=lambda r: r.created)[:-KEEP_FINISHED_RUNS]:
             self.runs.pop(old.id, None)
-        self.engine.submit("agent", self._execute, run)
+        threading.Thread(target=self._execute, args=(run,), name=f"run-{run.id}", daemon=True).start()
         return run
+
+    def active(self) -> int:
+        return sum(not r.finished for r in self.runs.values())
 
     def active_run(self, chat_id: str) -> Run | None:
         live = [r for r in self.runs.values() if r.chat_id == chat_id and not r.finished]
         return max(live, key=lambda r: r.created) if live else None
 
-    # ----- the loop (MLX thread) -----
+    # ----- the loop (the run's own thread) -----
 
     def _execute(self, run: Run) -> None:
         req = run.request
@@ -272,10 +277,20 @@ class Agent:
             if round_ and result["answer"] and not result["answer"].endswith("\n\n"):
                 emit_text("answer", "\n\n", result["tokens"])  # keep text from separate rounds in separate paragraphs
                 result["answer"] += "\n\n"
-            stats = self.engine.stream(
-                convo, scope.images, scope.videos, scope.params, emit_text, tools=offered, token_base=result["tokens"],
-                cancelled=run.cancelled, model_id=scope.model,
-            )
+            waited = []
+
+            def queued() -> None:
+                waited.append(True)
+                run.emit({"type": "status", "status": "queued"})
+
+            try:
+                stats = self.engine.call(
+                    "chat", self.engine.stream, convo, scope.images, scope.videos, scope.params, emit_text,
+                    tools=offered, token_base=result["tokens"], cancelled=run.cancelled, model_id=scope.model,
+                    abort=run.cancelled, on_queued=queued, on_started=lambda: waited and run.emit({"type": "status", "status": "running"}),
+                )
+            except Cancelled:
+                break
             if offered and not stats["tools_supported"] and round_ == 0 and scope.parent is None:
                 run.emit({"type": "status", "status": "running", "note": f"{stats['model']} 没有工具调用格式，这次只能直接回答"})
             result["stats"], result["tokens"], result["answer"] = stats, stats["tokens"], result["answer"] + stats["text"]

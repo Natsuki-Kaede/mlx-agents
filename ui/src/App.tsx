@@ -15,7 +15,7 @@ const TABS: { id: Tab; label: string; icon: typeof Images }[] = [
   { id: "gallery", label: "作品库", icon: Images },
 ];
 
-const BUSY_LABEL: Record<string, string> = { agent: "执行中", image: "生图中" };
+const BUSY_LABEL: Record<string, string> = { chat: "生成中", image: "生图中" };
 
 function readPref<T extends string>(key: string, fallback: T): T {
   try {
@@ -54,12 +54,16 @@ function useStatus() {
 
 function StatusPill({ status, offline }: { status: Status | null; offline: boolean }) {
   const busy = status?.busy;
-  const tone = offline ? "var(--danger)" : busy ? "var(--warn)" : "var(--ok)";
+  // Runs can be active while the model is idle: running a tool or waiting for an approval.
+  const working = !busy && !!status?.runs;
+  const tone = offline ? "var(--danger)" : busy || working ? "var(--warn)" : "var(--ok)";
   const text = offline
     ? "后端未连接"
     : busy
       ? `${BUSY_LABEL[busy] ?? busy}${status!.pending > 1 ? ` · 排队 ${status!.pending - 1}` : ""}`
-      : "空闲";
+      : working
+        ? `执行中 · ${status!.runs} 个任务`
+        : "空闲";
   return (
     <motion.div layout className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-xs">
       <span className="relative flex size-2.5">

@@ -59,14 +59,14 @@ class Backend:
         self.ready = threading.Event()
         self.error: str | None = None
         self.server: uvicorn.Server | None = None
-        self.engine = None
+        self.agent = None
         self.thread = threading.Thread(target=self._run, name="backend", daemon=True)
 
     def _run(self) -> None:
         try:
-            from backend.main import app, engine
+            from backend.main import agent, app
 
-            self.engine = engine
+            self.agent = agent
             config = uvicorn.Config(TokenGate(app, self.token), host="127.0.0.1", port=PORT, log_level="warning")
             self.server = uvicorn.Server(config)
             threading.Thread(target=self._signal_when_started, daemon=True).start()
@@ -84,8 +84,7 @@ class Backend:
         self.ready.set()
 
     def busy(self) -> bool:
-        status = self.engine.status() if self.engine else {}
-        return bool(status.get("busy") or status.get("pending"))
+        return bool(self.agent and self.agent.active())
 
     def stop(self) -> None:
         if self.server:

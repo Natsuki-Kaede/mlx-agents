@@ -18,6 +18,7 @@ import time
 import traceback
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +54,10 @@ UNBOUNDED_REASONING_TOKENS = 8192
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
 
 Emit = Callable[[str, str, dict], None]  # (kind "thinking" | "answer", text, running token counts)
+
+
+class Cancelled(Exception):
+    """A queued call was withdrawn before it started."""
 
 
 @dataclass
@@ -182,10 +187,37 @@ class Engine:
                 return fn(*args)
             finally:
                 self.current = None
-                with self._lock:
-                    self._pending -= 1
 
-        return self._thread.submit(run)
+        def done(_: Future) -> None:  # also runs for a call cancelled while still queued
+            with self._lock:
+                self._pending -= 1
+
+        future = self._thread.submit(run)
+        future.add_done_callback(done)
+        return future
+
+    def call(self, label: str, fn, *args, abort: Callable[[], bool] | None = None, on_queued=None, on_started=None, **kwargs):
+        """Run `fn(*args, **kwargs)` on the MLX thread and wait for its result. Agent runs live on their own
+        threads and come here only for model work, so a run waiting on a tool or an approval holds nothing.
+        While the call is still queued, `abort()` withdraws it (raising Cancelled); `on_queued` is called if
+        it has to wait behind other work and `on_started` when it begins."""
+        started = threading.Event()
+
+        def task():
+            started.set()
+            if on_started:
+                on_started()
+            return fn(*args, **kwargs)
+
+        future = self.submit(label, task)
+        if not started.wait(0.05) and on_queued:
+            on_queued()
+        while True:
+            try:
+                return future.result(timeout=0.2)
+            except FutureTimeout:
+                if abort and abort() and not started.is_set() and future.cancel():
+                    raise Cancelled from None
 
     def status(self) -> dict:
         return {
