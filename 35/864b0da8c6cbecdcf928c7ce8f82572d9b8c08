@@ -1,0 +1,38 @@
+ui/src/api.ts
+  s_269b95d29ae1c3::t_45b19694bf7aaa 64-66,101-102,151-152,228-230
+backend/main.py
+  s_269b95d29ae1c3::t_445a936a3e71c7 19,49,59,307-329
+  s_269b95d29ae1c3::t_42f29e2de8e018 330-331
+ui/src/components/ToolTimeline.tsx
+  s_269b95d29ae1c3::t_45b19694bf7aaa 22,210-223
+ui/src/components/ToolsMenu.tsx
+  s_269b95d29ae1c3::t_45b19694bf7aaa 2,13,20
+backend/agent.py
+  s_269b95d29ae1c3::t_445a936a3e71c7 17,40,227-232,234
+backend/mcp_servers.py
+  s_269b95d29ae1c3::t_445a936a3e71c7 74,98-99,114-115,120,124,151
+  s_269b95d29ae1c3::t_9544177264b15c 1-73,75-97,100-113,116-119,121-123,125-150,152-243
+ui/src/components/SettingsDialog.tsx
+  s_269b95d29ae1c3::t_45b19694bf7aaa 7,12,17,21
+  s_269b95d29ae1c3::t_84b62dcdb34fc8 32-37
+ui/src/components/settings/McpSection.tsx
+  s_269b95d29ae1c3::t_cb946e06694427 1-128
+backend/tools.py
+  s_269b95d29ae1c3::t_445a936a3e71c7 66,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35864b0da8c6cbecdcf928c7ce8f82572d9b8c08",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "unknown"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
