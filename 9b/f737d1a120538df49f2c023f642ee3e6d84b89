@@ -1,0 +1,49 @@
+ui/index.html
+  s_269b95d29ae1c3::t_813d5f9a9c621c 1-13
+ui/package-lock.json
+  s_269b95d29ae1c3::t_e764971a0bdffb 1-4030
+ui/package.json
+  s_269b95d29ae1c3::t_9f684c1e1effd2 1-32
+ui/src/App.tsx
+  s_269b95d29ae1c3::t_f56b2bb6301b79 1-202
+ui/src/components/Composer.tsx
+  s_269b95d29ae1c3::t_0d1cc490b1dc19 1-93
+ui/src/components/Markdown.tsx
+  s_269b95d29ae1c3::t_8f26462809b9af 1-68
+ui/src/components/PlanCard.tsx
+  s_269b95d29ae1c3::t_841270f2b70f0e 1-39
+ui/src/components/ReasoningMenu.tsx
+  s_269b95d29ae1c3::t_e5f771d9ba719f 1-89
+ui/src/components/ThinkingBlock.tsx
+  s_269b95d29ae1c3::t_387217c1f50eb3 1-46
+ui/src/components/ToolTimeline.tsx
+  s_269b95d29ae1c3::t_5917141860c0b7 1-303
+ui/src/components/ToolsMenu.tsx
+  s_269b95d29ae1c3::t_3b96a2f7e80bb5 1-94
+ui/src/index.css
+  s_269b95d29ae1c3::t_c70c9111426472 1-286
+ui/src/main.tsx
+  s_269b95d29ae1c3::t_761ee4f1b40957 1-10
+ui/src/pages/Gallery.tsx
+  s_269b95d29ae1c3::t_5470225d9df445 1-122
+ui/tsconfig.json
+  s_269b95d29ae1c3::t_3ee96b6760817a 1-17
+ui/vite.config.ts
+  s_269b95d29ae1c3::t_693b8ed6e8f779 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9bf737d1a120538df49f2c023f642ee3e6d84b89",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
