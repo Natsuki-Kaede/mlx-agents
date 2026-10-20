@@ -35,6 +35,9 @@ from mflux.utils.exceptions import StopImageGenerationException
 from mlx_lm import load as load_lm
 from mlx_lm import stream_generate as lm_stream_generate
 from mlx_lm.sample_utils import make_logits_processors, make_sampler
+# Private in mlx-lm 0.32.2 (pinned): the thinking markers of a tokenizer, single-token (<think>) or multi-token
+# (Gemma 4's "<|channel>thought" … "<channel|>"); reused so vision models get the same detection as text ones.
+from mlx_lm.tokenizer_utils import _infer_thinking
 from mlx_vlm import load as load_vlm
 from mlx_vlm import stream_generate as vlm_stream_generate
 from mlx_vlm.prompt_utils import apply_chat_template
@@ -132,8 +135,7 @@ class ChatFormat:
     @classmethod
     def for_vlm(cls, processor) -> "ChatFormat":
         tokenizer = getattr(processor, "tokenizer", processor)
-        vocab = tokenizer.get_vocab()
-        think = ("<think>", "</think>") if "<think>" in vocab and "</think>" in vocab else (None, None)
+        think = _infer_thinking(tokenizer)[:2]
         parser = _infer_tool_parser_from_processor(processor)
         module = load_tool_module(parser) if parser else None
         return cls(*think, *((module.tool_call_start, module.tool_call_end, module.parse_tool_call) if module else (None, None, None)))
