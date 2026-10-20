@@ -7,6 +7,7 @@ window or switching chats never loses work. Writes and commands wait for the use
 auto-approves them. Long tasks keep the context bounded by trimming older tool results.
 """
 
+import re
 import threading
 import time
 import traceback
@@ -59,26 +60,61 @@ def system_prompt(groups: set[str], workspace: Path, profile: dict | None = None
     return SYSTEM.format(name=profile["name"], role=role, now=datetime.now().strftime("%Y-%m-%d %H:%M"), rules=rules, memory=memory)
 
 
-def _brief(tool: dict) -> str:
-    args = tool.get("args") or {}
-    key = next((args[k] for k in ("query", "url", "path", "command", "prompt", "task", "pattern") if args.get(k)), "")
-    return f"{tool['name']}({str(key)[:60]})"
+HISTORY_TOOL_TURNS = 6  # the latest assistant turns whose tool calls are replayed as real calls
+HISTORY_ARG_CHARS = 300
+HISTORY_RESULT_CHARS = 400
+# Earlier versions noted tool use as text in the reply, and the model copied that note instead of calling tools.
+OLD_TOOL_NOTE = re.compile(r"^（本轮调用了工具：[^\n]*）\s*", re.M)
+DENIAL_TEXT = {"deny": "用户拒绝了这次操作。请换个做法，或先询问用户。", "cancelled": "任务已被用户停止。"}
+
+
+def _short(value, limit: int):
+    if isinstance(value, str) and len(value) > limit:
+        return value[:limit] + f"…（共 {len(value)} 字符，已省略）"
+    return value
+
+
+def _past_result(card: dict) -> str:
+    """What a replayed tool call returned, rebuilt from its card (the full text is not kept)."""
+    if card.get("status") == "error":
+        return f"工具出错：{card.get('error')}"
+    if card.get("status") == "denied":
+        return DENIAL_TEXT.get(card.get("decision") or "deny", "等待审批超时，操作没有执行。")
+    if card.get("status") != "done":
+        return "（这次调用没有执行完）"
+    if card.get("output"):
+        return str(card["output"])
+    if card.get("results"):
+        return "\n".join(f"- {r.get('title', '')} {r.get('url', '')}".strip() for r in card["results"])
+    keys = ("path", "lines", "count", "chars", "title", "url", "file", "width", "height", "seed", "exit_code")
+    facts = {k: card[k] for k in keys if card.get(k) not in (None, "")}
+    if card.get("memory"):
+        facts["memory"] = card["memory"].get("text")
+    return "完成。" + (" ".join(f"{k}={v}" for k, v in facts.items()) if facts else "")
 
 
 def history_for(turns: list[dict]) -> list[dict]:
-    """Earlier turns as the model sees them: text, with tool use noted and older composer modes summarised."""
+    """Earlier turns as the model sees them. The latest turns' tool calls are replayed as real tool-call and
+    tool-result messages (with arguments and results shortened), so the model sees how tools were actually
+    called; older turns keep only their text. Older composer modes are summarised."""
+    replay = {i for i, t in enumerate(turns) if t["role"] == "assistant"}
+    replay = set(sorted(replay)[-HISTORY_TOOL_TURNS:])
     out = []
-    for t in turns:
+    for i, t in enumerate(turns):
         if t["role"] == "user":
             prefix = {"image": "（直接生图）提示词：", "describe": "（请根据附件反推生图提示词）"}.get(t.get("mode") or "", "")
             out.append({"role": "user", "content": prefix + t["content"]})
             continue
-        content = t["content"]
+        content = OLD_TOOL_NOTE.sub("", t["content"]).strip()
         if t.get("describe"):
             content = f"反推得到的提示词：{t['describe'].get('prompt', '')}"
-        tools = [x for x in t.get("tools") or [] if x.get("status") == "done" and not x.get("parent")]
-        if tools:
-            content = f"（本轮调用了工具：{'、'.join(_brief(x) for x in tools[:8])}）\n{content}"
+        if i in replay:
+            for card in t.get("tools") or []:
+                if card.get("parent") or card["name"] == "update_plan":
+                    continue  # a sub-agent's own calls stay inside its report; plans are not worth the context
+                args = {k: _short(v, HISTORY_ARG_CHARS) for k, v in (card.get("args") or {}).items()}
+                out.append({"role": "assistant", "content": "", "tool_calls": [{"type": "function", "function": {"name": card["name"], "arguments": args}}]})
+                out.append({"role": "tool", "content": _short(_past_result(card), HISTORY_RESULT_CHARS)})
         out.append({"role": "assistant", "content": content or "（没有文字回复）"})
     return out
 
@@ -362,7 +398,7 @@ class Agent:
                 elif decision != "allow":
                     card.update(status="denied", decision=decision)
                     run.emit({"type": "tool", "tool": dict(card)})
-                    return {"deny": "用户拒绝了这次操作。请换个做法，或先询问用户。", "cancelled": "任务已被用户停止。"}.get(decision, "等待审批超时，操作没有执行。")
+                    return DENIAL_TEXT.get(decision, "等待审批超时，操作没有执行。")
                 card.update(status="running", decision=decision)
             run.emit({"type": "tool", "tool": dict(card)})
             text, extra = tool.handler(ctx, args)
