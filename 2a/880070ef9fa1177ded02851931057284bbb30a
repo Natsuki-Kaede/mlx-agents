@@ -1,0 +1,14 @@
+backend/main.py
+  h_46d0a34169acea 1-313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a880070ef9fa1177ded02851931057284bbb30a",
+  "prompts": {},
+  "humans": {
+    "h_46d0a34169acea": {
+      "author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
