@@ -40,11 +40,12 @@ RULES = {
     "files": "- 文件工具只能访问工作目录 {workspace}。处理文件前先了解现状：find_files 按文件名找、search_files 按内容搜、list_dir 看目录、read_file 读内容；新文件用 write_file，修改用 edit_file（old_text 必须与原文完全一致）。写入前用户会审批，被拒绝就换个做法或询问用户。",
     "exec": "- run_command 在工作目录 {workspace} 用 zsh 运行命令（脚本、测试、命令行工具等），运行前用户会审批；命令要能直接执行、尽量非交互，长时间任务设置合适的 timeout。",
     "mcp": "- 名字以 mcp__ 开头的工具来自用户接入的 MCP 服务，按工具说明传参；调用前用户会审批（除非已设为自动批准）。",
-    "agents": "- 可以独立完成、需要大量搜索或阅读的子任务，用 delegate_task 交给子 agent：它在独立的上下文里工作，只把结果报告给你，能让你的上下文保持简洁。任务描述要完整具体（目标、范围、期望的产出），子 agent 看不到这段对话。可选的 agent：{agents}。",
+    "agents": "- 可以独立完成、需要大量搜索或阅读的子任务，用 delegate_task 交给子 agent：它在独立的上下文里工作，只把结果报告给你，能让你的上下文保持简洁。任务描述要完整具体（目标、范围、期望的产出），子 agent 看不到这段对话，但和你用同样的工具。它的报告里说没能确认的内容，不要当作事实转述。可选的 agent（只决定子 agent 的角色指令）：{agents}。",
 }
 SUB_AGENT_NOTE = """
 
-你是主 agent 派来完成一个子任务的子 agent。专注完成任务，不要向用户提问；信息不足时基于已有信息尽力完成并说明假设。
+你是主 agent 派来完成一个子任务的子 agent。专注完成任务，不要向用户提问。
+只依据工具实际返回的内容作答：需要的工具不可用、调用出错或信息不足时，如实说明哪些没能完成、缺什么，不要猜测或编造内容。
 完成后给出简洁完整的结果报告——主 agent 只能看到你的最终回复，看不到你的工具调用过程。"""
 
 
@@ -311,10 +312,9 @@ class Agent:
         if agent_id and not any(a["id"] == agent_id for a in store.agents()):
             raise ToolError(f"没有 id 为 {agent_id} 的 agent")
         profile = store.get_agent(agent_id or run.request.get("agent"))
-        # The sub-agent never gets more than the chat allows; a named agent is further limited to its own tools.
+        # The sub-agent works with the chat's switches. A named agent contributes its instructions and model only:
+        # an agent's permissions are the starting switches of a chat, not limits on work done inside one.
         groups = set(scope.groups) - {"agents"}
-        if agent_id:
-            groups &= {g for g, on in profile["permissions"].items() if on}
         sub = Scope(
             groups=groups, tools={n: t for n, t in scope.tools.items() if n not in SUB_AGENT_EXCLUDED and (t.group == "core" or t.group in groups)},
             images=[], videos=[], workspace=scope.workspace, params=scope.params,

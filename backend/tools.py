@@ -496,7 +496,7 @@ TOOLS: dict[str, Tool] = {
         Tool("delegate_task", "agents", "Hand a self-contained subtask to a sub-agent that works in its own fresh context with the same tools and reports back only its final result. Use it for research, searching or reading-heavy work whose details you do not need to keep. The sub-agent cannot see this conversation, so describe the task completely.",
              _params({
                  "task": {"type": "string", "description": "The complete task: goal, scope and the expected result"},
-                 "agent": {"type": "string", "description": "Optional agent id to run it as (see the system prompt); defaults to the current agent"},
+                 "agent": {"type": "string", "description": "Optional agent id whose role instructions (and model, if it sets one) the sub-agent uses; it always gets the same tools as you. Defaults to the current agent"},
                  "context": {"type": "string", "description": "Optional background the sub-agent needs, e.g. facts or file names found so far"},
              }, ["task"]), _delegate_task),
         Tool("web_search", "web", "Search the web with DuckDuckGo. Returns titles, URLs and snippets. Use for current events, facts you are unsure of, or anything after your training data.",
