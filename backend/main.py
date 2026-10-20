@@ -1,4 +1,4 @@
-"""MLX Studio backend API: agent runs (chat with tools, images, files and commands), uploads, image job progress,
+"""MLX Agents backend API: agent runs (chat with tools, images, files and commands), uploads, image job progress,
 the gallery, long-term memory and settings.
 
 Served only by the desktop client (desktop/app.py), which runs it on a loopback port behind a token gate.
@@ -27,7 +27,7 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".heic"}
 
 engine = Engine()
 agent = Agent(engine)
-app = FastAPI(title="MLX Studio")
+app = FastAPI(title="MLX Agents")
 app.mount("/media/outputs", StaticFiles(directory=OUTPUTS), name="outputs")
 app.mount("/media/uploads", StaticFiles(directory=UPLOADS), name="uploads")
 

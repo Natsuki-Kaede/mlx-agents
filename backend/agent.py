@@ -27,7 +27,7 @@ TRIMMED_TOOL_CHARS = 500
 APPROVAL_TIMEOUT = 1800
 KEEP_FINISHED_RUNS = 50
 
-SYSTEM = """你是 MLX Studio 里的本地 AI 助手，运行在用户自己的 Mac 上，可以调用工具完成任务。当前时间：{now}。
+SYSTEM = """你是 MLX Agents 里的本地 AI 助手，运行在用户自己的 Mac 上，可以调用工具完成任务。当前时间：{now}。
 工作方式：
 - 3 步以上的任务先用 update_plan 列出步骤，开始和完成每一步时更新状态；简单问题直接回答，不用列计划。
 - 只调用真正需要的工具，读到结果后再决定下一步；不要编造工具没有返回的信息，出错时如实说明并换个办法。

@@ -145,7 +145,7 @@ export default function App() {
             <div className="accent-fill grid size-9 place-items-center rounded-2xl">
               <Sparkle className="size-5" />
             </div>
-            <div className="hidden text-[15px] font-semibold md:block">MLX Studio</div>
+            <div className="hidden text-[15px] font-semibold md:block">MLX Agents</div>
           </div>
 
           <nav className="glass glass-refract flex gap-1 rounded-full p-1">

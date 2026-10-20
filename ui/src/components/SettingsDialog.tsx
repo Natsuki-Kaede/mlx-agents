@@ -63,7 +63,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
                 </span>
               </Label>
               <div className="flex gap-2">
-                <input className="field font-mono text-[13px]" value={workspace} onChange={(e) => setWorkspace(e.target.value)} placeholder="~/MLX Studio" />
+                <input className="field font-mono text-[13px]" value={workspace} onChange={(e) => setWorkspace(e.target.value)} placeholder="~/MLX Agents" />
                 <Button
                   variant="primary"
                   onClick={() =>

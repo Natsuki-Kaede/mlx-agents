@@ -1,4 +1,4 @@
-"""MLX Studio desktop client: a native window around the local backend, with no separately run service.
+"""MLX Agents desktop client: a native window around the local backend, with no separately run service.
 
 The backend (backend.main) runs in a background thread on a fixed loopback port and is shut down with the
 window. Run from the project root: .venv/bin/python -m desktop.app (the .app bundle does exactly this).
@@ -24,7 +24,7 @@ DATA = ROOT / "data"
 ICON = HERE / "icon.png"
 # Fixed so the window's origin, and with it the localStorage drafts and preferences, survives restarts.
 PORT = 17860
-COOKIE = "studio_token"
+COOKIE = "mlx_agents_token"
 
 
 class TokenGate:
@@ -125,12 +125,12 @@ def lock_single_instance():
 
 
 def name_process() -> None:
-    """Show "MLX Studio" (not "Python") in the menu bar; must run before the Cocoa app starts."""
+    """Show "MLX Agents" (not "Python") in the menu bar; must run before the Cocoa app starts."""
     try:
         from Foundation import NSBundle
 
         info = NSBundle.mainBundle().localizedInfoDictionary() or NSBundle.mainBundle().infoDictionary()
-        info["CFBundleName"] = "MLX Studio"
+        info["CFBundleName"] = "MLX Agents"
     except Exception:  # cosmetic only
         pass
 
@@ -144,7 +144,7 @@ def main() -> None:
 
     lock = lock_single_instance()
     if lock is None:
-        subprocess.run(["osascript", "-e", 'display alert "MLX Studio 已在运行" message "请切换到已经打开的窗口。"'])
+        subprocess.run(["osascript", "-e", 'display alert "MLX Agents 已在运行" message "请切换到已经打开的窗口。"'])
         return
 
     name_process()
@@ -154,8 +154,8 @@ def main() -> None:
 
     webview.settings["ALLOW_DOWNLOADS"] = True
     window = webview.create_window(
-        "MLX Studio",
-        html=page("MLX Studio", "正在启动本地服务，首次加载组件需要几秒…", dark, spinner=True),
+        "MLX Agents",
+        html=page("MLX Agents", "正在启动本地服务，首次加载组件需要几秒…", dark, spinner=True),
         width=1320,
         height=880,
         min_size=(420, 600),

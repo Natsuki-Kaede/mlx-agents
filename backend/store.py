@@ -15,7 +15,7 @@ DATA = ROOT / "data"
 CHATS = DATA / "chats"
 MEMORY_FILE = DATA / "memory.json"
 SETTINGS_FILE = DATA / "settings.json"
-DEFAULT_WORKSPACE = Path.home() / "MLX Studio"
+DEFAULT_WORKSPACE = Path.home() / "MLX Agents"
 CHATS.mkdir(parents=True, exist_ok=True)
 
 _lock = threading.RLock()
