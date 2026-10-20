@@ -57,12 +57,13 @@ class ToolContext(Protocol):
     def cancelled(self) -> bool: ...
     def update(self, **fields) -> None: ...  # merge fields into this call's card and push it to the client
     def set_plan(self, steps: list[dict]) -> None: ...
+    def delegate(self, task: str, agent_id: str | None, context: str) -> tuple[str, dict]: ...
 
 
 @dataclass
 class Tool:
     name: str
-    group: str  # "core" | "web" | "image" | "files" | "exec": the chat switch that offers it
+    group: str  # "core" | "web" | "image" | "files" | "exec" | "agents": the chat switch that offers it
     description: str
     parameters: dict
     handler: Callable[[ToolContext, dict], tuple[str, dict]]
@@ -452,6 +453,10 @@ def _forget(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     return f"已删除记忆 {memory_id}", {"id": memory_id}
 
 
+def _delegate_task(ctx: ToolContext, args: dict) -> tuple[str, dict]:
+    return ctx.delegate(_str(args, "task"), _str(args, "agent", required=False) or None, _str(args, "context", required=False))
+
+
 def _search_chats(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     query = _str(args, "query").lower()
     hits = []
@@ -484,6 +489,12 @@ TOOLS: dict[str, Tool] = {
              _params({"query": {"type": "string"}}, ["query"]), _search_chats),
         Tool("search_gallery", "core", "Search previously generated images by words in their prompts; returns file names usable as reference_file for generate_image.",
              _params({"query": {"type": "string", "description": "Words that must appear in the prompt; empty lists the newest"}, "limit": {"type": "integer"}}, []), _search_gallery),
+        Tool("delegate_task", "agents", "Hand a self-contained subtask to a sub-agent that works in its own fresh context with the same tools and reports back only its final result. Use it for research, searching or reading-heavy work whose details you do not need to keep. The sub-agent cannot see this conversation, so describe the task completely.",
+             _params({
+                 "task": {"type": "string", "description": "The complete task: goal, scope and the expected result"},
+                 "agent": {"type": "string", "description": "Optional agent id to run it as (see the system prompt); defaults to the current agent"},
+                 "context": {"type": "string", "description": "Optional background the sub-agent needs, e.g. facts or file names found so far"},
+             }, ["task"]), _delegate_task),
         Tool("web_search", "web", "Search the web with DuckDuckGo. Returns titles, URLs and snippets. Use for current events, facts you are unsure of, or anything after your training data.",
              _params({"query": {"type": "string", "description": "Search keywords"}}, ["query"]), _web_search),
         Tool("read_page", "web", "Fetch a web page and return its main text (truncated). Use after web_search to read a promising result in full.",

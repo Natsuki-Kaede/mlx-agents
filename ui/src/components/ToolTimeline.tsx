@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   AlertCircle,
   Ban,
+  Bot,
   Brain,
   Check,
   ChevronDown,
@@ -26,6 +27,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { watchJob, type Job, type ToolEvent } from "../api";
 import { useChatActions } from "./chatActions";
+import { Markdown } from "./Markdown";
 import { spring } from "./ui";
 
 const host = (url?: string) => {
@@ -169,6 +171,18 @@ function describe(tool: ToolEvent, job: Job | null): { icon: typeof Search; titl
           </Pre>
         ),
       };
+    case "delegate_task":
+      return {
+        icon: Bot,
+        title: `${tool.agent ? `${tool.agent.icon} ${tool.agent.name}` : "子 agent"}：${clip(a.task, 48)}`,
+        detail: tool.status === "running" ? "子 agent 工作中" : "",
+        body: (
+          <div className="ink-soft mt-2 border-l-2 border-[var(--glass-edge)] pl-3 text-xs leading-relaxed whitespace-pre-wrap">
+            {String(a.task ?? "")}
+            {a.context ? `\n\n背景：${String(a.context)}` : ""}
+          </div>
+        ),
+      };
     case "remember":
       return { icon: Brain, title: `记住：${clip(a.text, 50)}`, detail: "" };
     case "forget":
@@ -245,7 +259,7 @@ function Approval({ tool }: { tool: ToolEvent }) {
   );
 }
 
-function ToolCard({ tool }: { tool: ToolEvent }) {
+function ToolCard({ tool, all }: { tool: ToolEvent; all: ToolEvent[] }) {
   const waiting = tool.status === "awaiting_approval";
   const [open, setOpen] = useState(false);
   const job = useJobProgress(tool.job, tool.status === "running");
@@ -294,6 +308,7 @@ function ToolCard({ tool }: { tool: ToolEvent }) {
         </div>
       )}
       {tool.name === "generate_image" && tool.status === "done" && <ImageActions tool={tool} />}
+      {tool.name === "delegate_task" && <SubAgent tool={tool} all={all} />}
       <AnimatePresence initial={false}>
         {open && body && !waiting && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
@@ -305,14 +320,32 @@ function ToolCard({ tool }: { tool: ToolEvent }) {
   );
 }
 
-/** The tool calls made while answering, in order (plan updates show as the plan card instead). */
+/** A sub-agent's own tool calls, nested under its card, and its report. */
+function SubAgent({ tool, all }: { tool: ToolEvent; all: ToolEvent[] }) {
+  const children = all.filter((t) => t.parent === tool.id);
+  return (
+    <div className="mt-2 space-y-1.5 border-l-2 border-[var(--glass-edge)] pl-2.5">
+      {children.map((t) => (
+        <ToolCard key={t.id} tool={t} all={all} />
+      ))}
+      {!!tool.output && (
+        <div className="rounded-xl bg-[color-mix(in_srgb,var(--bg)_55%,transparent)] px-3 py-2 text-[13px]">
+          <Markdown text={tool.output} streaming={tool.status === "running"} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The tool calls made while answering, in order (plan updates show as the plan card instead; a
+ * sub-agent's calls show inside its delegate_task card). */
 export function ToolTimeline({ tools }: { tools: ToolEvent[] }) {
-  const shown = tools.filter((t) => t.name !== "update_plan" || t.status === "error");
+  const shown = tools.filter((t) => !t.parent && (t.name !== "update_plan" || t.status === "error"));
   if (!shown.length) return null;
   return (
     <div className="flex w-full flex-col gap-1.5">
       {shown.map((t) => (
-        <ToolCard key={t.id} tool={t} />
+        <ToolCard key={t.id} tool={t} all={tools} />
       ))}
     </div>
   );

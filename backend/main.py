@@ -46,6 +46,7 @@ class Permissions(BaseModel):
     image: bool = True
     files: bool = False
     exec: bool = False
+    agents: bool = False
 
 
 class RunRequest(BaseModel):

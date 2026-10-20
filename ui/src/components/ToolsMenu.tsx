@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { FolderOpen, Globe, ImageIcon, ShieldCheck, Terminal } from "lucide-react";
+import { Bot, FolderOpen, Globe, ImageIcon, ShieldCheck, Terminal } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import type { ApprovalKind, ChatSettings, Permissions } from "../api";
 import { Toggle, spring } from "./ui";
@@ -10,6 +10,7 @@ export const PERMISSION_ITEMS: { key: keyof Permissions; label: string; hint: st
   { key: "image", label: "生图", hint: "调用本地生图模型，每张需几分钟", icon: ImageIcon },
   { key: "files", label: "文件", hint: "在工作目录里查找、搜索、读写文件；写入前需要你批准", icon: FolderOpen },
   { key: "exec", label: "命令", hint: "在工作目录里运行命令；运行前需要你批准", icon: Terminal },
+  { key: "agents", label: "子 agent", hint: "把独立的子任务交给子 agent，在单独的上下文里完成后汇报", icon: Bot },
 ];
 
 const AUTO: { kind: ApprovalKind; needs: keyof Permissions; label: string }[] = [

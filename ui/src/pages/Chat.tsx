@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import {
   AGENTS_CHANGED,
   DEFAULT_AGENT,
+  NO_PERMISSIONS,
   api,
   runEvents,
   type AgentProfile,
@@ -40,7 +41,7 @@ const DEFAULT_PARAMS: VlmParams = {
 };
 
 // Web, files and commands are opt-in per chat; image generation is offered unless switched off.
-const DEFAULT_SETTINGS: ChatSettings = { web: false, image: true, files: false, exec: false, autoApprove: [], model: null, agent: null };
+const DEFAULT_SETTINGS: ChatSettings = { ...NO_PERMISSIONS, image: true, autoApprove: [], model: null, agent: null };
 const ASPECTS: Record<string, number> = { "1:1": 1, "3:4": 3 / 4, "4:3": 4 / 3, "9:16": 9 / 16, "16:9": 16 / 9 };
 
 const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -259,7 +260,8 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   };
 
   // An agent brings its own tools and model; auto-approvals already granted in this chat stay.
-  const chooseAgent = (a: AgentProfile) => changeSettings({ ...settings, ...a.permissions, agent: a.id, model: a.model ?? settings.model ?? null });
+  const chooseAgent = (a: AgentProfile) =>
+    changeSettings({ ...settings, ...NO_PERMISSIONS, ...a.permissions, agent: a.id, model: a.model ?? settings.model ?? null });
 
   const actions: ChatActions = {
     useAsBase: (file) => {

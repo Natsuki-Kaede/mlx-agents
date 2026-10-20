@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { AGENTS_CHANGED, DEFAULT_AGENT, api, type AgentProfile, type ModelInfo } from "../../api";
+import { AGENTS_CHANGED, DEFAULT_AGENT, NO_PERMISSIONS, api, type AgentProfile, type ModelInfo } from "../../api";
 import { PERMISSION_ITEMS } from "../ToolsMenu";
 import { Button, Label, Toggle } from "../ui";
 
@@ -11,7 +11,7 @@ const BLANK: Draft = {
   icon: "🤖",
   description: "",
   instructions: "",
-  permissions: { web: false, image: false, files: false, exec: false },
+  permissions: NO_PERMISSIONS,
   model: null,
 };
 
@@ -147,7 +147,7 @@ export function AgentsSection({ onError }: { onError: (e: string | null) => void
               {[a.description, PERMISSION_ITEMS.filter((i) => a.permissions[i.key]).map((i) => i.label).join("、"), a.model].filter(Boolean).join(" · ")}
             </div>
           </div>
-          <button type="button" title="编辑" onClick={() => setEditing(a)} className="ink-soft grid size-8 shrink-0 place-items-center rounded-full hover:bg-[var(--glass-fill-strong)]">
+          <button type="button" title="编辑" onClick={() => setEditing({ ...a, permissions: { ...NO_PERMISSIONS, ...a.permissions } })} className="ink-soft grid size-8 shrink-0 place-items-center rounded-full hover:bg-[var(--glass-fill-strong)]">
             <Pencil className="size-3.5" />
           </button>
         </motion.div>

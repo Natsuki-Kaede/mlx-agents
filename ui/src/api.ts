@@ -61,7 +61,8 @@ export type Job = {
 };
 
 /** Per-chat switches: which tool groups the agent may use, and which approvals it may skip. */
-export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean };
+export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean; agents: boolean };
+export const NO_PERMISSIONS: Permissions = { web: false, image: false, files: false, exec: false, agents: false };
 export type ApprovalKind = "write" | "exec";
 export type ChatSettings = Permissions & { autoApprove?: ApprovalKind[]; model?: string | null; agent?: string | null };
 export type AgentProfile = {
@@ -96,6 +97,8 @@ export type ToolEvent = {
   exit_code?: number | null;
   stopped?: string | null;
   memory?: { id: string; text: string };
+  parent?: string;
+  agent?: { id: string; name: string; icon: string };
   job?: string;
   image?: string;
   file?: string;
