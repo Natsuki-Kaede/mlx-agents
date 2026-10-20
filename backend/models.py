@@ -155,7 +155,11 @@ def start_download(repo: str) -> Download:
 def _download(job: Download) -> None:
     from fnmatch import fnmatch
 
-    from huggingface_hub import HfApi, snapshot_download
+    from huggingface_hub import HfApi, constants, snapshot_download
+
+    # Xet transfers have stalled at 0 bytes on some networks (seen behind a fake-IP proxy); plain HTTP
+    # downloads are slower in theory but always progress. Read at call time, so this applies here.
+    constants.HF_HUB_DISABLE_XET = True
 
     try:
         info = HfApi().model_info(job.repo, files_metadata=True)
