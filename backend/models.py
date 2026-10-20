@@ -6,6 +6,7 @@ Each sub-folder of models/ is one model, recognised by its files:
 - transformer/ and vae/: an image model for mflux. Only the Qwen-Image 2.1 family is wired up.
 """
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -16,12 +17,18 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+import httpx
+
 from backend import store
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = ROOT / "models"
 # Only what MLX loaders read; skips PyTorch/GGUF duplicates and custom code that MLX never executes.
 DOWNLOAD_PATTERNS = ["*.json", "*.safetensors", "*.jinja", "*.txt", "*.model", "*.tiktoken"]
+PART = ".part"  # a file still downloading; renamed once its size and sha256 check out
+STALL_SECONDS = 30  # no data for this long, or less than MIN_RATE on average over it, counts as stalled
+MIN_RATE = 10_240  # bytes per second
+MAX_FRUITLESS_ATTEMPTS = 8  # reconnects in a row without any new data before giving up
 REPO_ID = re.compile(r"^[\w-][\w.-]*/[\w-][\w.-]*$")  # owner/name; no leading dot, so never "." or ".."
 
 
@@ -72,7 +79,9 @@ def _inspect(path: Path) -> ModelInfo | None:
     runtime = "mlx-vlm" if vision else "mlx-lm"
     quant = config.get("quantization") or config.get("quantization_config") or {}
     info = ModelInfo(path.name, "chat", runtime, path, vision=vision, model_type=model_type, bits=quant.get("bits"), size_gb=_size_gb(path))
-    if not _has_module(runtime, model_type):
+    if any(path.rglob(f"*{PART}")):
+        info.supported, info.note = False, "还没下载完，可以重新下载以续传"
+    elif not _has_module(runtime, model_type):
         info.supported, info.note = False, f"{runtime} 不支持模型类型 {model_type or '（未知）'}"
     elif not list(path.glob("*.safetensors")):
         info.supported, info.note = False, "缺少 safetensors 权重"
@@ -125,18 +134,24 @@ class Download:
     status: str = "running"  # running | done | error
     total: int = 0
     error: str | None = None
+    retries: int = 0  # automatic reconnects after a stall or a dropped connection
+    note: str | None = None
     started: float = field(default_factory=time.time)
 
     def public(self) -> dict:
         done = sum(f.stat().st_size for f in self.dest.rglob("*") if f.is_file()) if self.dest.exists() else 0
-        return {"repo": self.repo, "id": self.dest.name, "status": self.status, "total": self.total, "done": min(done, self.total) if self.total else done, "error": self.error}
+        return {
+            "repo": self.repo, "id": self.dest.name, "status": self.status, "total": self.total,
+            "done": min(done, self.total) if self.total else done, "error": self.error, "retries": self.retries, "note": self.note,
+        }
 
 
 downloads: dict[str, Download] = {}
 
 
 def start_download(repo: str) -> Download:
-    """Download an MLX model repo into models/<repo name> on a background thread."""
+    """Download an MLX model repo into models/<repo name> on a background thread. A folder left by an
+    unfinished download is resumed."""
     repo = repo.strip().removeprefix("https://huggingface.co/").strip("/")
     if not REPO_ID.match(repo):
         raise ValueError("请填写 Hugging Face 仓库名，例如 mlx-community/Qwen3-8B-4bit")
@@ -144,7 +159,8 @@ def start_download(repo: str) -> Download:
     running = downloads.get(dest.name)
     if running and running.status == "running":
         raise ValueError(f"{dest.name} 正在下载")
-    if dest.exists() and _inspect(dest):
+    existing = _inspect(dest) if dest.exists() else None
+    if existing and existing.supported:
         raise ValueError(f"models/{dest.name} 已存在")
     job = Download(repo, dest)
     downloads[dest.name] = job
@@ -152,14 +168,80 @@ def start_download(repo: str) -> Download:
     return job
 
 
+class _Stalled(Exception):
+    pass
+
+
+def _stream(url: str, part: Path, offset: int) -> None:
+    """Append to `part` from `offset`; raise _Stalled or an httpx error when the transfer stops or crawls."""
+    headers = {"Range": f"bytes={offset}-"} if offset else {}
+    timeout = httpx.Timeout(30, read=STALL_SECONDS)
+    with httpx.stream("GET", url, headers=headers, follow_redirects=True, timeout=timeout) as response:
+        if response.status_code == 416:  # nothing left after `offset`
+            return
+        response.raise_for_status()
+        resumed = offset and response.status_code == 206
+        window_start, window_bytes = time.time(), 0
+        with part.open("ab" if resumed else "wb") as f:  # a server that ignores Range sends the whole file
+            for chunk in response.iter_bytes():
+                f.write(chunk)
+                window_bytes += len(chunk)
+                if time.time() - window_start >= STALL_SECONDS:
+                    if window_bytes < MIN_RATE * STALL_SECONDS:
+                        raise _Stalled(f"速度低于 {MIN_RATE // 1024} KB/s")
+                    window_start, window_bytes = time.time(), 0
+
+
+def _fetch(job: Download, url: str, target: Path, size: int | None, sha256: str | None) -> None:
+    """Download one file, reconnecting and resuming whenever it stalls or drops, then verify it."""
+    if target.exists() and size is not None and target.stat().st_size == size:
+        return  # finished by an earlier attempt
+    target.parent.mkdir(parents=True, exist_ok=True)
+    part = target.with_name(target.name + PART)
+    fruitless = 0
+    while True:
+        before = part.stat().st_size if part.exists() else 0
+        if size is not None and before >= size:
+            break
+        try:
+            _stream(url, part, before)
+            break
+        except (httpx.HTTPError, _Stalled) as exc:
+            if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500 and exc.response.status_code != 429:
+                raise ValueError(f"{target.name} 下载失败：HTTP {exc.response.status_code}") from exc
+            after = part.stat().st_size if part.exists() else 0
+            fruitless = 0 if after > before else fruitless + 1
+            if fruitless >= MAX_FRUITLESS_ATTEMPTS:
+                raise ValueError(f"{target.name} 连续 {fruitless} 次重连都没有进展：{_reason(exc)}") from exc
+            job.retries += 1
+            job.note = f"传输中断（{_reason(exc)}），已自动续传 {job.retries} 次"
+            time.sleep(min(30, 2**fruitless))
+    if size is not None and part.stat().st_size != size:
+        part.unlink()
+        raise ValueError(f"{target.name} 大小不符，已删除，请重新下载")
+    if sha256:
+        digest = hashlib.sha256()
+        with part.open("rb") as f:
+            for block in iter(lambda: f.read(1 << 22), b""):
+                digest.update(block)
+        if digest.hexdigest() != sha256:
+            part.unlink()
+            raise ValueError(f"{target.name} 校验失败，已删除，请重新下载")
+    part.replace(target)
+
+
+def _reason(exc: Exception) -> str:
+    if isinstance(exc, _Stalled):
+        return str(exc)
+    if isinstance(exc, httpx.TimeoutException):
+        return f"{STALL_SECONDS} 秒没有数据"
+    return type(exc).__name__
+
+
 def _download(job: Download) -> None:
     from fnmatch import fnmatch
 
-    from huggingface_hub import HfApi, constants, snapshot_download
-
-    # Xet transfers have stalled at 0 bytes on some networks (seen behind a fake-IP proxy); plain HTTP
-    # downloads are slower in theory but always progress. Read at call time, so this applies here.
-    constants.HF_HUB_DISABLE_XET = True
+    from huggingface_hub import HfApi
 
     try:
         info = HfApi().model_info(job.repo, files_metadata=True)
@@ -167,14 +249,18 @@ def _download(job: Download) -> None:
         job.total = sum(s.size or 0 for s in files)
         if not any(s.rfilename == "config.json" or s.rfilename.startswith("transformer/") for s in files):
             raise ValueError("这个仓库里没有可识别的模型文件")
+        have = sum(f.stat().st_size for f in job.dest.rglob("*") if f.is_file()) if job.dest.exists() else 0
         free = shutil.disk_usage(MODELS_DIR).free
-        if job.total > free - 2e9:  # keep 2 GB spare for swap and outputs
-            raise ValueError(f"磁盘空间不足：需要 {job.total / 1e9:.1f} GB，剩余 {free / 1e9:.1f} GB")
-        snapshot_download(job.repo, local_dir=job.dest, allow_patterns=DOWNLOAD_PATTERNS)
+        if job.total - have > free - 2e9:  # keep 2 GB spare for swap and outputs
+            raise ValueError(f"磁盘空间不足：还需要 {(job.total - have) / 1e9:.1f} GB，剩余 {free / 1e9:.1f} GB")
+        # Plain resolve URLs, pinned to the listed revision: they redirect to a CDN that honours Range requests.
+        for s in sorted(files, key=lambda s: s.size or 0):
+            url = f"https://huggingface.co/{job.repo}/resolve/{info.sha}/{s.rfilename}"
+            _fetch(job, url, job.dest / s.rfilename, s.size, s.lfs.sha256 if s.lfs else None)
         found = _inspect(job.dest)
         if found is None:
             raise ValueError("下载完成，但没有识别出模型")
-        job.status = "done"
+        job.status, job.note = "done", None
         if not found.supported:
             job.error = found.note
     except Exception as exc:  # shown in the settings panel

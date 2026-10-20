@@ -11,7 +11,16 @@ export type ModelInfo = {
   supported: boolean;
   note: string;
 };
-export type ModelDownload = { repo: string; id: string; status: "running" | "done" | "error"; total: number; done: number; error: string | null };
+export type ModelDownload = {
+  repo: string;
+  id: string;
+  status: "running" | "done" | "error";
+  total: number;
+  done: number;
+  error: string | null;
+  retries: number;
+  note: string | null;
+};
 export type ModelList = { models: ModelInfo[]; default_chat: string | null; default_image: string | null; downloads: ModelDownload[] };
 export type Reasoning = "off" | "low" | "medium" | "high";
 export type GenParams = { max_tokens: number; temperature: number; repetition_penalty: number };

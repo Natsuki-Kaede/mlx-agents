@@ -91,7 +91,7 @@ export function ModelsSection({ onError }: { onError: (e: string | null) => void
           </Button>
         </div>
         <div className="ink-faint text-xs leading-relaxed">
-          需要 MLX 格式的仓库（如 mlx-community 下的模型）：纯文本模型用 mlx-lm 运行，带视觉的用 mlx-vlm。下载到项目的 models/ 文件夹，16 GB 内存建议选 4 bit、9B 以内的模型。
+          需要 MLX 格式的仓库（如 mlx-community 下的模型）：纯文本模型用 mlx-lm 运行，带视觉的用 mlx-vlm。下载到项目的 models/ 文件夹，16 GB 内存建议选 4 bit、12B 以内的模型。传输卡住会自动续传；没下完的模型再点一次下载即可接着下。
         </div>
         {list?.downloads.map((d) => (
           <div key={d.id} className="glass space-y-1.5 rounded-xl px-3 py-2.5 text-xs">
@@ -106,6 +106,7 @@ export function ModelsSection({ onError }: { onError: (e: string | null) => void
                 <div className="accent-fill h-full transition-[width] duration-500" style={{ width: `${d.total ? (d.done / d.total) * 100 : 5}%` }} />
               </div>
             )}
+            {d.status === "running" && d.note && <div className="ink-soft">{d.note}</div>}
             {d.error && <div className="text-[var(--danger)]">{d.error}</div>}
           </div>
         ))}
