@@ -1,0 +1,41 @@
+ui/src/pages/Chat.tsx
+  s_269b95d29ae1c3::t_421c68060e028f 378
+  s_269b95d29ae1c3::t_9196e89a26b460 6-7,10,43,105,117-124,199,233,236,261-263,313-316,370-377,379-386,536-539
+ui/src/components/Composer.tsx
+  s_269b95d29ae1c3::t_9196e89a26b460 4-5,31-34,92
+ui/src/components/ToolsMenu.tsx
+  s_269b95d29ae1c3::t_8e2d1749276fdc 8,25,57
+ui/src/components/AgentMenu.tsx
+  s_269b95d29ae1c3::t_be6a1d12d476bb 1-90
+ui/src/components/SettingsDialog.tsx
+  s_269b95d29ae1c3::t_9196e89a26b460 5,11-12,14,19-21,27-29
+ui/src/App.tsx
+  s_269b95d29ae1c3::t_9196e89a26b460 5,100,112-120,188-191,211
+backend/agent.py
+  s_269b95d29ae1c3::t_9da95c1f6bbda6 27,41-44,47,166,176,206
+backend/main.py
+  s_269b95d29ae1c3::t_9da95c1f6bbda6 60,255-302
+  s_269b95d29ae1c3::t_04866a05f7841d 303-304
+backend/store.py
+  s_269b95d29ae1c3::t_9da95c1f6bbda6 1-2,19,68-71,123-208
+ui/src/components/settings/AgentsSection.tsx
+  s_269b95d29ae1c3::t_f0c43be026f4e1 1-160
+ui/src/api.ts
+  s_269b95d29ae1c3::t_7a36e0ed95d2e8 66-76,135,209,220-223,256-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b18a5bd9582d02bef003621594d715e18d684d87",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "unknown"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
