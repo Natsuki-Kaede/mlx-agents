@@ -19,6 +19,7 @@ import {
   Images,
   Loader2,
   MessagesSquare,
+  Plug,
   Repeat2,
   Search,
   ShieldAlert,
@@ -206,6 +207,20 @@ function describe(tool: ToolEvent, job: Job | null): { icon: typeof Search; titl
       };
     }
     default:
+      if (tool.name.startsWith("mcp__")) {
+        const [, server, name] = tool.name.split("__");
+        return {
+          icon: Plug,
+          title: `${tool.server ?? server} · ${tool.tool ?? name}`,
+          detail: tool.output !== undefined ? clip(tool.output, 60) : "",
+          body: (
+            <Pre>
+              <span className="ink-soft">{JSON.stringify(a, null, 2)}</span>
+              {tool.output !== undefined ? `\n\n${tool.output}` : ""}
+            </Pre>
+          ),
+        };
+      }
       return { icon: Check, title: tool.name, detail: "" };
   }
 }

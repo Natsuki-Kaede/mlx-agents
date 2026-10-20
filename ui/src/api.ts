@@ -61,9 +61,9 @@ export type Job = {
 };
 
 /** Per-chat switches: which tool groups the agent may use, and which approvals it may skip. */
-export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean; agents: boolean };
-export const NO_PERMISSIONS: Permissions = { web: false, image: false, files: false, exec: false, agents: false };
-export type ApprovalKind = "write" | "exec";
+export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean; mcp: boolean; agents: boolean };
+export const NO_PERMISSIONS: Permissions = { web: false, image: false, files: false, exec: false, mcp: false, agents: false };
+export type ApprovalKind = "write" | "exec" | "mcp";
 export type ChatSettings = Permissions & { autoApprove?: ApprovalKind[]; model?: string | null; agent?: string | null };
 export type AgentProfile = {
   id: string;
@@ -98,6 +98,8 @@ export type ToolEvent = {
   stopped?: string | null;
   memory?: { id: string; text: string };
   parent?: string;
+  server?: string;
+  tool?: string;
   agent?: { id: string; name: string; icon: string };
   job?: string;
   image?: string;
@@ -146,6 +148,8 @@ export type RunEvent = { seq: number } & (
   | { type: "end"; status: "done" | "error" | "cancelled"; stats: VlmStats & { tokens?: TokenCounts }; error: string | null }
 );
 export type Memory = { id: string; text: string; created: number };
+export type McpServerStatus = { name: string; state: "idle" | "connecting" | "connected" | "error" | "stopped" | "disabled"; error: string | null; tools: string[] };
+export type McpState = { config: { mcpServers: Record<string, unknown> }; status: McpServerStatus[] };
 export type AppSettings = { workspace: string; workspace_resolved: string; chat_model?: string; image_model?: string };
 
 export const FIELD_LABELS: Record<string, string> = {
@@ -221,6 +225,9 @@ export const api = {
   saveSettings: (patch: { workspace?: string; chat_model?: string; image_model?: string }) => request<AppSettings>("/api/settings", send("PUT", patch)),
   models: () => request<ModelList>("/api/models"),
   agents: () => request<AgentProfile[]>("/api/agents"),
+  mcp: () => request<McpState>("/api/mcp"),
+  saveMcp: (config: unknown) => request<McpState>("/api/mcp", send("PUT", config)),
+  connectMcp: () => request<McpState>("/api/mcp/connect", { method: "POST" }),
   saveAgent: ({ id, ...profile }: Omit<AgentProfile, "id"> & { id?: string }) =>
     id ? request<AgentProfile>(`/api/agents/${id}`, send("PUT", profile)) : request<AgentProfile>("/api/agents", json(profile)),
   deleteAgent: (id: string) => request<{ id: string }>(`/api/agents/${id}`, { method: "DELETE" }),

@@ -63,11 +63,11 @@ class ToolContext(Protocol):
 @dataclass
 class Tool:
     name: str
-    group: str  # "core" | "web" | "image" | "files" | "exec" | "agents": the chat switch that offers it
+    group: str  # "core" | "web" | "image" | "files" | "exec" | "mcp" | "agents": the chat switch that offers it
     description: str
     parameters: dict
     handler: Callable[[ToolContext, dict], tuple[str, dict]]
-    approval: str | None = None  # "write" | "exec": asks the user first unless auto-approved for the chat
+    approval: str | None = None  # "write" | "exec" | "mcp": asks the user first unless auto-approved for the chat
     preview: Callable[[ToolContext, dict], dict] | None = None  # what the approval card shows
 
     def schema(self) -> dict:

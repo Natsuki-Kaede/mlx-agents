@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend import models, store
+from backend import mcp_servers, models, store
 from backend.agent import Agent
 from backend.engine import OUTPUTS, ROOT, UPLOADS, VIDEO_EXTS, Engine
 
@@ -46,6 +46,7 @@ class Permissions(BaseModel):
     image: bool = True
     files: bool = False
     exec: bool = False
+    mcp: bool = False
     agents: bool = False
 
 
@@ -55,7 +56,7 @@ class RunRequest(BaseModel):
     attachments: list[str] = []
     params: VlmParams = VlmParams()
     permissions: Permissions = Permissions()
-    auto_approve: list[Literal["write", "exec"]] = []
+    auto_approve: list[Literal["write", "exec", "mcp"]] = []
     system: str = ""
     model: str | None = None  # chat model id (folder under models/); None uses the default
     agent: str | None = None  # agent id; None uses the default agent
@@ -301,6 +302,31 @@ def delete_agent(agent_id: str):
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"id": agent_id}
+
+
+# ----- MCP servers -----
+
+
+@app.get("/api/mcp")
+def get_mcp():
+    return {"config": mcp_servers.load_config(), "status": mcp_servers.manager.status()}
+
+
+@app.put("/api/mcp")
+def put_mcp(config: dict):
+    try:
+        clean = mcp_servers.validate(config)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    mcp_servers.CONFIG_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2))
+    mcp_servers.manager.restart()
+    return get_mcp()
+
+
+@app.post("/api/mcp/connect")
+def connect_mcp():
+    """Connect every enabled server now (they otherwise connect on first use) and report each one."""
+    return {"config": mcp_servers.load_config(), "status": mcp_servers.manager.connect()}
 
 
 # ----- models -----

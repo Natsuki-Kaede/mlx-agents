@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from backend import store
+from backend import mcp_servers, store
 from backend.tools import TOOLS, Tool, ToolError, available
 
 MAX_TOOL_ROUNDS = 30  # the round after the last one offers no tools, so the model has to answer
@@ -37,6 +37,7 @@ RULES = {
     "image": "- 画图用 generate_image：用户给了现成提示词就原样使用，否则写出具体详细的提示词（主体、场景、构图、光线、风格）；图片会自动展示给用户，不要在回答里贴图片地址。\n- 以附图或作品库里的图为基础复刻、改图时设置 reference_index 或 reference_file，并按改动大小设置 strength：这个模型会牢牢保留底图的构图和光线，换场景、时间、风格等大改动用 0.05–0.15，中等改动 0.2–0.4，只做微调才用 0.5 以上；改动特别大时也可以不用底图。",
     "files": "- 文件工具只能访问工作目录 {workspace}。处理文件前先了解现状：find_files 按文件名找、search_files 按内容搜、list_dir 看目录、read_file 读内容；新文件用 write_file，修改用 edit_file（old_text 必须与原文完全一致）。写入前用户会审批，被拒绝就换个做法或询问用户。",
     "exec": "- run_command 在工作目录 {workspace} 用 zsh 运行命令（脚本、测试、命令行工具等），运行前用户会审批；命令要能直接执行、尽量非交互，长时间任务设置合适的 timeout。",
+    "mcp": "- 名字以 mcp__ 开头的工具来自用户接入的 MCP 服务，按工具说明传参；调用前用户会审批（除非已设为自动批准）。",
     "agents": "- 可以独立完成、需要大量搜索或阅读的子任务，用 delegate_task 交给子 agent：它在独立的上下文里工作，只把结果报告给你，能让你的上下文保持简洁。任务描述要完整具体（目标、范围、期望的产出），子 agent 看不到这段对话。可选的 agent：{agents}。",
 }
 SUB_AGENT_NOTE = """
@@ -223,8 +224,14 @@ class Agent:
         attachments = req.get("attachments") or []
         run.status = "running"
         run.emit({"type": "status", "status": "running"})
+        tools = available(groups)
+        if "mcp" in groups:
+            mcp_tools, failures = mcp_servers.manager.tools()
+            tools += mcp_tools
+            if failures:
+                run.emit({"type": "status", "status": "running", "note": "有 MCP 服务没连上：" + "；".join(failures)})
         scope = Scope(
-            groups=groups, tools={t.name: t for t in available(groups)},
+            groups=groups, tools={t.name: t for t in tools},
             images=[a["path"] for a in attachments if a["kind"] == "image"], videos=[a["path"] for a in attachments if a["kind"] == "video"],
             workspace=store.workspace(), params=req["params"], model=req.get("model"),
         )
