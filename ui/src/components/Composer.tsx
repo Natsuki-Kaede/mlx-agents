@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { ArrowUp, Film, History, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, Film, History, Paperclip, Square, Target, X } from "lucide-react";
 import { useRef } from "react";
 import type { ModelInfo, Upload } from "../api";
 import { updateSettings, useAppSettings } from "../settingsStore";
@@ -24,6 +24,9 @@ export function Composer(props: {
   models: ModelInfo[];
   defaultModel: string | null;
   onRefreshModels: () => void;
+  goalMode: boolean; // the next message sets a goal
+  onGoalMode: (on: boolean) => void;
+  goalOpen: boolean; // the chat has an unfinished goal: a message continues it
 }) {
   const { input, attachments, running } = props;
   // Safari/WebKit ends an IME composition before the Enter keydown arrives, with isComposing already false;
@@ -89,13 +92,33 @@ export function Composer(props: {
           e.preventDefault();
           if (sendable && !running) props.onSend();
         }}
-        placeholder="说说要做什么，Enter 发送"
+        placeholder={
+          props.goalMode
+            ? "描述目标和完成标准，agent 会自主循环执行直到完成"
+            : props.goalOpen
+              ? "回复或补充，agent 会继续推进目标"
+              : "说说要做什么，Enter 发送"
+        }
         className="scroll-soft block max-h-48 min-h-11 w-full resize-none bg-transparent px-2.5 py-2 text-[15px] outline-none placeholder:text-[var(--ink-faint)]"
       />
       {/* The toolbar is a row of compact pills; menus open above it and anchor to the composer. */}
       <div className="flex min-w-0 items-center gap-1">
         <Button variant="ghost" className="px-2.5 md:hidden" title="历史对话" icon={<History className="size-5" />} onClick={props.onShowHistory} />
         <Button variant="ghost" className="px-2.5" title="附加图片或视频" loading={props.uploading} icon={<Paperclip className="size-5" />} onClick={() => fileInput.current?.click()} />
+        {!props.goalOpen && (
+          <button
+            type="button"
+            title={props.goalMode ? "这条消息将设为目标" : "设定目标：agent 自主循环执行直到完成"}
+            aria-pressed={props.goalMode}
+            onClick={() => props.onGoalMode(!props.goalMode)}
+            className={`flex h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors ${
+              props.goalMode ? "accent-fill" : "ink-soft hover:bg-[var(--glass-fill)]"
+            }`}
+          >
+            <Target className="size-4" />
+            <span className="hidden sm:inline">目标</span>
+          </button>
+        )}
         {settings && (
           <>
             <ToolsMenu value={settings} onChange={save} />

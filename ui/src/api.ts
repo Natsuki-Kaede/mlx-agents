@@ -103,7 +103,7 @@ export type ToolEvent = {
 };
 
 /** Turns sent through the old composer modes (before the agent took them over) are still rendered. */
-export type LegacyMode = "chat" | "image" | "describe";
+export type LegacyMode = "chat" | "image" | "describe" | "goal";
 export type DescribeCardData = {
   status: "describing" | "merging" | "done" | "error";
   source: Upload;
@@ -124,7 +124,22 @@ export type ChatTurn = {
   attachments?: Upload[];
   stats?: (VlmStats & { tokens?: TokenCounts }) | null;
 };
-export type SavedChat = { title: string; turns: ChatTurn[] };
+/** A goal the agent works on autonomously until it is done (it can pause and be continued). */
+export type GoalStatus = "active" | "waiting" | "paused" | "stalled" | "done";
+export type Goal = {
+  text: string;
+  status: GoalStatus;
+  note: string | null;
+  question: string | null;
+  summary: string | null;
+  verification: string | null;
+  rounds: number;
+  seconds: number;
+  progress: string | null;
+  created: number;
+  updated: number;
+};
+export type SavedChat = { title: string; turns: ChatTurn[]; goal?: Goal | null };
 export type ChatSummary = { id: string; title: string; updated: number; turns: number };
 export type RunInfo = { id: string; chat_id: string; status: string; events: number; created: number };
 export type RunEvent = { seq: number } & (
@@ -133,6 +148,7 @@ export type RunEvent = { seq: number } & (
   | { type: "tool"; tool: ToolEvent }
   | { type: "plan"; plan: PlanStep[] }
   | { type: "auto_approve"; auto_approve: boolean }
+  | { type: "goal"; goal: Goal }
   | { type: "end"; status: "done" | "error" | "cancelled"; stats: VlmStats & { tokens?: TokenCounts }; error: string | null }
 );
 export type Memory = { id: string; text: string; created: number };
@@ -148,6 +164,8 @@ export type AppSettings = {
   reasoning: Reasoning;
   params: GenParams;
   instructions: string;
+  goal_max_rounds: number;
+  goal_max_minutes: number;
 };
 export type SettingsPatch = Partial<Omit<AppSettings, "workspace_resolved" | "permissions" | "params">> & {
   permissions?: Partial<Permissions>;
@@ -204,7 +222,8 @@ export const api = {
   chat: (id: string) => request<SavedChat & { id: string }>(`/api/chats/${id}`),
   chatRun: (id: string) => request<RunInfo | null>(`/api/chats/${id}/run`),
   deleteChat: (id: string) => request<{ id: string }>(`/api/chats/${id}`, { method: "DELETE" }),
-  startRun: (body: { chat_id: string; content: string; attachments: string[] }) => request<RunInfo>("/api/runs", json(body)),
+  startRun: (body: { chat_id: string; content: string; attachments: string[]; goal?: boolean }) => request<RunInfo>("/api/runs", json(body)),
+  clearGoal: (chatId: string) => request<{ id: string }>(`/api/chats/${chatId}/goal`, { method: "DELETE" }),
   cancelRun: (id: string) => request<{ id: string }>(`/api/runs/${id}/cancel`, { method: "POST" }),
   approve: (id: string, tool_id: string, decision: "allow" | "always" | "deny") =>
     request<{ id: string }>(`/api/runs/${id}/approvals`, json({ tool_id, decision })),

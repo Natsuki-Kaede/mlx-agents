@@ -59,12 +59,14 @@ class ToolContext(Protocol):
     def update(self, **fields) -> None: ...  # merge fields into this call's card and push it to the client
     def set_plan(self, steps: list[dict]) -> None: ...
     def delegate(self, task: str, context: str) -> tuple[str, dict]: ...
+    def finish_goal(self, summary: str, verification: str) -> tuple[str, dict]: ...
+    def ask_user(self, question: str) -> tuple[str, dict]: ...
 
 
 @dataclass
 class Tool:
     name: str
-    group: str  # "core" | "web" | "image" | "files" | "exec" | "mcp" | "agents": the chat switch that offers it
+    group: str  # "core" | "web" | "image" | "files" | "exec" | "mcp" | "agents", or "goal" (offered in goal mode)
     description: str
     parameters: dict
     handler: Callable[[ToolContext, dict], tuple[str, dict]]
@@ -457,6 +459,14 @@ def _forget(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     return f"已删除记忆 {memory_id}", {"id": memory_id}
 
 
+def _finish_goal(ctx: ToolContext, args: dict) -> tuple[str, dict]:
+    return ctx.finish_goal(_str(args, "summary"), _str(args, "verification", required=False))
+
+
+def _ask_user(ctx: ToolContext, args: dict) -> tuple[str, dict]:
+    return ctx.ask_user(_str(args, "question"))
+
+
 def _delegate_task(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     return ctx.delegate(_str(args, "task"), _str(args, "context", required=False))
 
@@ -493,6 +503,13 @@ TOOLS: dict[str, Tool] = {
              _params({"query": {"type": "string"}}, ["query"]), _search_chats),
         Tool("search_gallery", "core", "Search previously generated images by words in their prompts; returns file names usable as reference_file for generate_image.",
              _params({"query": {"type": "string", "description": "Words that must appear in the prompt; empty lists the newest"}, "limit": {"type": "integer"}}, []), _search_gallery),
+        Tool("finish_goal", "goal", "Declare the goal complete. Call it only when everything the goal asks for is done and checked; it is rejected if files were changed after the last command you ran to verify them.",
+             _params({
+                 "summary": {"type": "string", "description": "What was done, in the user's language"},
+                 "verification": {"type": "string", "description": "How the result was verified: commands run and what they showed, files checked"},
+             }, ["summary", "verification"]), _finish_goal),
+        Tool("ask_user", "goal", "Pause the goal and ask the user something only they can answer (a decision, missing information or access). Do not use it to report progress.",
+             _params({"question": {"type": "string", "description": "The question, specific and answerable"}}, ["question"]), _ask_user),
         Tool("delegate_task", "agents", "Hand a self-contained subtask to a sub-agent that works in its own fresh context with the same tools and reports back only its final result. Use it for research, searching or reading-heavy work whose details you do not need to keep. The sub-agent cannot see this conversation, so describe the task completely.",
              _params({
                  "task": {"type": "string", "description": "The complete task: goal, scope and the expected result"},

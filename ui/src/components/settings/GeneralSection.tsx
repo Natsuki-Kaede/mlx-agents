@@ -1,4 +1,4 @@
-import { FileText, FolderOpen, SlidersHorizontal } from "lucide-react";
+import { FileText, FolderOpen, SlidersHorizontal, Target } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { GenParams } from "../../api";
 import { updateSettings, useAppSettings } from "../../settingsStore";
@@ -18,8 +18,10 @@ export function GeneralSection({ onError }: { onError: (e: string | null) => voi
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [instructions, setInstructions] = useState<string | null>(null);
   const [params, setParams] = useState<GenParams | null>(null);
+  const [budget, setBudget] = useState<{ goal_max_rounds: number; goal_max_minutes: number } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const paramsTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const budgetTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const textTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Drafts start from the saved values once they have loaded.
@@ -28,6 +30,7 @@ export function GeneralSection({ onError }: { onError: (e: string | null) => voi
     setWorkspace((w) => w ?? settings.workspace);
     setInstructions((t) => t ?? settings.instructions);
     setParams((p) => p ?? settings.params);
+    setBudget((b) => b ?? { goal_max_rounds: settings.goal_max_rounds, goal_max_minutes: settings.goal_max_minutes });
   }, [settings]);
 
   const save = async (patch: Parameters<typeof updateSettings>[0], what: string) => {
@@ -56,7 +59,14 @@ export function GeneralSection({ onError }: { onError: (e: string | null) => voi
     paramsTimer.current = setTimeout(() => save({ params: next }, "params"), 400);
   };
 
-  if (!settings || workspace === null || instructions === null || !params) return <div className="ink-faint py-6 text-center text-xs">加载中…</div>;
+  const changeBudget = (key: "goal_max_rounds" | "goal_max_minutes", value: number) => {
+    const next = { ...budget!, [key]: value };
+    setBudget(next);
+    clearTimeout(budgetTimer.current);
+    budgetTimer.current = setTimeout(() => save(next, "goal"), 400);
+  };
+
+  if (!settings || workspace === null || instructions === null || !params || !budget) return <div className="ink-faint py-6 text-center text-xs">加载中…</div>;
 
   return (
     <div className="space-y-6">
@@ -102,6 +112,19 @@ export function GeneralSection({ onError }: { onError: (e: string | null) => voi
             <Slider key={key} label={label} value={params[key]} min={min} max={max} step={step} format={format} onChange={(v) => changeParam(key, v)} />
           ))}
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <Label hint={saved === "goal" ? "已保存" : undefined}>
+          <span className="inline-flex items-center gap-1.5">
+            <Target className="size-4" /> 目标模式预算（每次运行）
+          </span>
+        </Label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Slider label="最多轮数" value={budget.goal_max_rounds} min={10} max={500} step={10} format={(v) => `${v} 轮`} onChange={(v) => changeBudget("goal_max_rounds", v)} />
+          <Slider label="最长时间" value={budget.goal_max_minutes} min={5} max={240} step={5} format={(v) => `${v} 分钟`} onChange={(v) => changeBudget("goal_max_minutes", v)} />
+        </div>
+        <div className="ink-faint text-xs">用完后目标会暂停，可以在目标卡片上点「继续」。</div>
       </section>
     </div>
   );

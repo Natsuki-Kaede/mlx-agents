@@ -6,6 +6,9 @@ replay at any time; it saves the user turn when it starts and the assistant turn
 window or switching chats never loses work. Writes and commands wait for the user's approval unless the
 auto-approve mode is on. Long tasks keep the context bounded by trimming older tool results and, when that is not
 enough, summarising the earlier work.
+
+In goal mode the run keeps going until the model calls finish_goal (refused while edits are unverified) or
+ask_user, a budget runs out, or it stalls; the goal and its progress live in the chat, so it can be resumed.
 """
 
 import json
@@ -32,6 +35,7 @@ APPROVAL_TIMEOUT = 1800
 KEEP_FINISHED_RUNS = 50
 MAX_FORMAT_RETRIES = 2  # malformed tool-call markup is sent back for another try this often in a row
 MAX_REPEATS = 2  # an identical call (same tool and arguments, nothing changed since) runs at most this often
+GOAL_NUDGE_LIMIT = 3  # replies in a row without a tool call before a goal pauses as stalled
 SUMMARY_KEEP = 6  # latest messages kept verbatim when earlier work is summarised
 WRITE_TOOLS = {"write_file", "edit_file"}
 
@@ -49,6 +53,17 @@ RULES = {
     "mcp": "- 名字以 mcp__ 开头的工具来自用户接入的 MCP 服务，按工具说明传参；调用前用户会审批（除非已设为自动批准）。",
     "agents": "- 可以独立完成、需要大量搜索或阅读的子任务，用 delegate_task 交给子 agent：它在独立的上下文里工作，只把结果报告给你，能让你的上下文保持简洁。任务描述要完整具体（目标、范围、期望的产出），子 agent 看不到这段对话，但和你用同样的工具。它的报告里说没能确认的内容，不要当作事实转述。",
 }
+GOAL_RULES = """
+
+## 目标模式
+用户设定的目标：
+{goal}{progress}
+你在目标模式下自主工作，直到目标完成：
+- 先弄清现状，用 update_plan 列出步骤，然后一步步执行；每一轮都调用工具推进，不要只描述打算做什么。
+- 每做完一步都要验证（运行测试、构建、命令或读回文件）；出错就分析原因，修正后再验证。
+- 全部完成并验证后调用 finish_goal，写清做了什么、怎么验证的。没有验证过的结果不算完成。
+- 只有必须由用户决定或提供的信息才调用 ask_user，其余情况自己判断并继续。"""
+GOAL_NUDGE = "目标还没有完成。请直接调用工具继续下一步；如果已经全部完成并验证，调用 finish_goal；如果必须由用户提供信息，调用 ask_user。"
 FORMAT_RETRY = "上面的工具调用格式无法解析，没有执行。请严格按照工具调用格式重新调用，工具名和参数都要完整。"
 SUMMARY_SYSTEM = """你负责为一个正在工作的 AI agent 压缩上下文。阅读下面的工作记录，写一份进度摘要，让 agent 只看摘要就能接着干：
 - 已经完成的事，以及验证结果；
@@ -63,8 +78,11 @@ SUB_AGENT_NOTE = """
 完成后给出简洁完整的结果报告——主 agent 只能看到你的最终回复，看不到你的工具调用过程。"""
 
 
-def system_prompt(groups: set[str], workspace: Path) -> str:
+def system_prompt(groups: set[str], workspace: Path, goal: dict | None = None) -> str:
     rules = "\n".join(RULES[g].format(workspace=workspace) for g in RULES if g in groups)
+    if goal is not None:
+        progress = f"\n\n之前的进度：\n{goal['progress']}" if goal.get("progress") else ""
+        rules += GOAL_RULES.format(goal=goal["text"], progress=progress)
     text = store.settings()["instructions"].strip()
     instructions = f"\n\n用户的全局指令（AGENTS.md），务必遵守：\n{text}" if text else ""
     items = store.memories()
@@ -166,6 +184,13 @@ class Run:
     plan: list[dict] = field(default_factory=list)
     created: float = field(default_factory=time.time)
     history: list[dict] = field(default_factory=list)
+    rounds: int = 0  # model calls made, sub-agents included
+    goal_outcome: str | None = None  # done | waiting | stalled | budget, set during a goal run
+    goal_result: dict = field(default_factory=dict)
+    progress: str | None = None  # the latest summary of earlier work, kept with the goal
+    tool_seq: int = 0
+    wrote_at: int = 0  # tool_seq of the last file change, and of the last command run (to check verification)
+    ran_at: int = 0
     call_counts: dict[str, int] = field(default_factory=dict)
     _cancel: bool = False
     _cond: threading.Condition = field(default_factory=threading.Condition)
@@ -224,6 +249,8 @@ class Scope:
     params: dict
     model: str | None
     parent: str | None = None  # for a sub-agent: the delegate_task card its tool cards belong to
+    goal: dict | None = None  # set for the main loop of a goal run
+    deadline: float | None = None
 
 
 class _Context:
@@ -247,6 +274,21 @@ class _Context:
     def delegate(self, task: str, context: str) -> tuple[str, dict]:
         return self._agent._delegate(self._run, self, self._scope, task, context)
 
+    def finish_goal(self, summary: str, verification: str) -> tuple[str, dict]:
+        if self._scope.goal is None:
+            raise ToolError("现在不是目标模式")
+        run = self._run
+        if run.wrote_at > run.ran_at and "exec" in self._scope.groups:
+            raise ToolError("最后一次修改文件之后还没有运行任何命令验证。请先运行测试、构建或相关命令确认结果，再调用 finish_goal。")
+        run.goal_outcome, run.goal_result = "done", {"summary": summary, "verification": verification}
+        return "目标已标记为完成。", {"summary": summary, "verification": verification}
+
+    def ask_user(self, question: str) -> tuple[str, dict]:
+        if self._scope.goal is None:
+            raise ToolError("现在不是目标模式，直接在回复里提问即可")
+        self._run.goal_outcome, self._run.goal_result = "waiting", {"question": question}
+        return "问题已转给用户，目标暂停等待回复。", {"question": question}
+
 
 class Agent:
     def __init__(self, engine) -> None:
@@ -261,11 +303,13 @@ class Agent:
         before = store.load_chat(run.chat_id) or {"turns": []}
         run.history = history_for(before["turns"])
         attachments = [{k: a[k] for k in ("id", "kind", "url")} for a in request.get("attachments") or []]
-        user_turn = {"role": "user", "mode": "chat", "content": request["content"], "attachments": attachments}
+        goal = request.get("goal")
+        mode = "goal" if goal is not None and goal.get("new") else "chat"
+        user_turn = {"role": "user", "mode": mode, "content": request["content"], "attachments": attachments}
 
         def add_user(c: dict) -> dict:
             title = c.get("title") or (request["content"].replace("\n", " ").strip() or "图片对话")[:28]
-            return c | {"title": title, "turns": [*c["turns"], user_turn]}
+            return c | {"title": title, "turns": [*c["turns"], user_turn]} | ({"goal": _public_goal(goal)} if goal is not None else {})
 
         store.update_chat(run.chat_id, add_user)
         self.runs[run.id] = run
@@ -301,7 +345,16 @@ class Agent:
             images=[a["path"] for a in attachments if a["kind"] == "image"], videos=[a["path"] for a in attachments if a["kind"] == "video"],
             workspace=store.workspace(), params=req["params"], model=req.get("model"),
         )
-        system = system_prompt(groups, scope.workspace)
+        goal = req.get("goal")
+        max_rounds = MAX_TOOL_ROUNDS
+        if goal is not None:
+            budget = req.get("goal_budget") or {}
+            max_rounds = budget.get("rounds", 120)
+            scope.goal, scope.deadline = goal, time.time() + 60 * budget.get("minutes", 60)
+            scope.groups.add("goal")
+            scope.tools |= {t.name: t for t in available({"goal"}) if t.group == "goal"}
+            run.emit({"type": "goal", "goal": _public_goal(goal | {"status": "active"})})
+        system = system_prompt(groups, scope.workspace, goal)
         convo = [{"role": "system", "content": system}, *run.history, {"role": "user", "content": req["content"]}]
         started = time.time()
         result, error = {"answer": "", "thinking": "", "tokens": {"thinking": 0, "answer": 0}, "stats": {}, "peak": 0.0, "load": 0.0}, None
@@ -310,7 +363,7 @@ class Agent:
             run.emit({"type": kind, "text": text, "tokens": counts})
 
         try:
-            self._loop(run, scope, convo, emit_text, MAX_TOOL_ROUNDS, result)
+            self._loop(run, scope, convo, emit_text, max_rounds, result)
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
@@ -324,19 +377,46 @@ class Agent:
             "role": "assistant", "mode": "chat", "content": (result["answer"].strip() + note).strip(), "thinking": result["thinking"],
             "tokens": tokens, "tools": run.tools, "plan": run.plan, "stats": final_stats,
         }
-        store.update_chat(run.chat_id, lambda c: c | {"turns": [*c["turns"], assistant_turn]})
+        update = {}
+        if goal is not None:
+            update["goal"] = self._goal_after_run(run, goal, error, time.time() - started)
+            run.emit({"type": "goal", "goal": update["goal"]})
+        store.update_chat(run.chat_id, lambda c: c | {"turns": [*c["turns"], assistant_turn]} | update)
         run.emit({"type": "end", "status": run.status, "stats": final_stats, "error": error})
+
+    def _goal_after_run(self, run: Run, goal: dict, error: str | None, seconds: float) -> dict:
+        """The goal's state once a goal run ends: done, waiting for an answer, or paused (stalled, out of
+        budget, stopped or failed) with a note on why."""
+        outcome = "cancelled" if run.cancelled() else "error" if error else run.goal_outcome or "budget"
+        status = {"done": "done", "waiting": "waiting", "stalled": "stalled"}.get(outcome, "paused")
+        note = {
+            "stalled": f"连续 {GOAL_NUDGE_LIMIT} 轮没有调用工具推进，已暂停",
+            "budget": "本次运行的轮数或时长预算用完，已暂停",
+            "cancelled": "已停止",
+            "error": f"出错暂停：{error}",
+        }.get(outcome)
+        return _public_goal(goal | {
+            "status": status, "note": note, "question": run.goal_result.get("question"),
+            "summary": run.goal_result.get("summary"), "verification": run.goal_result.get("verification"),
+            "rounds": goal.get("rounds", 0) + run.rounds, "seconds": round(goal.get("seconds", 0) + seconds),
+            "progress": run.progress or goal.get("progress"), "updated": time.time(),
+        })
 
     def _loop(self, run: Run, scope: Scope, convo: list[dict], emit_text, max_rounds: int, result: dict) -> None:
         """Alternate model rounds and tool calls until the model answers without calling a tool, the round
         budget runs out (the last round offers no tools) or the run is cancelled. Malformed tool-call markup is
-        sent back for another try. Accumulates into `result`."""
+        sent back for another try. In goal mode a reply without a tool call gets a nudge to continue, and the
+        loop ends when the goal is finished, waits for the user, stalls or runs out of time. Accumulates into
+        `result`."""
         schemas = [t.schema() for t in scope.tools.values()]
         anchor = len(convo)  # messages before this loop's own work: never summarised away
-        format_retries = 0
+        main_goal = scope.goal is not None and scope.parent is None
+        format_retries = idle = 0
         for round_ in range(max_rounds + 1):
             if run.cancelled():
                 break  # also covers a run stopped while still queued, before any model is loaded
+            if scope.deadline and time.time() > scope.deadline:
+                break
             offered = schemas if round_ < max_rounds and schemas else None
             if round_ and result["answer"] and not result["answer"].endswith("\n\n"):
                 emit_text("answer", "\n\n", result["tokens"])  # keep text from separate rounds in separate paragraphs
@@ -344,6 +424,7 @@ class Agent:
             stats = self._generate(run, scope, convo, emit_text, offered, result["tokens"])
             if stats is None:
                 break
+            run.rounds += 1
             if offered and not stats["tools_supported"] and round_ == 0 and scope.parent is None:
                 run.emit({"type": "status", "status": "running", "note": f"{stats['model']} 没有工具调用格式，这次只能直接回答"})
             result["stats"], result["tokens"], result["answer"] = stats, stats["tokens"], result["answer"] + stats["text"]
@@ -359,13 +440,23 @@ class Agent:
                 run.emit({"type": "status", "status": "running", "note": "模型的工具调用格式有误，已让它重试"})
                 continue
             if not calls:
+                if main_goal and offered and run.goal_outcome is None:
+                    idle += 1
+                    if idle >= GOAL_NUDGE_LIMIT:
+                        run.goal_outcome = "stalled"
+                        break
+                    convo.append({"role": "assistant", "content": stats["text"] or "（没有回复）"})
+                    convo.append({"role": "user", "content": GOAL_NUDGE})
+                    continue
                 break
-            format_retries = 0
+            format_retries = idle = 0
             convo.append({"role": "assistant", "content": stats["text"], "tool_calls": [{"type": "function", "function": c} for c in calls]})
             for call in calls:
                 convo.append({"role": "tool", "content": self._call_tool(run, call, scope)})
                 if run.cancelled():
                     break
+            if main_goal and run.goal_outcome in ("done", "waiting"):
+                break
             self._compact(run, scope, convo, anchor)
 
     def _generate(self, run: Run, scope: Scope, convo: list[dict], emit_text, tools, token_base) -> dict | None:
@@ -409,11 +500,12 @@ class Agent:
             return
         convo[anchor:cut] = [{"role": "user", "content": f"【较早的工作已压缩成进度摘要】\n{summary}"}]
         if scope.parent is None:
+            run.progress = summary
             run.emit({"type": "status", "status": "running", "note": "上下文较长，已把较早的过程压缩成进度摘要"})
 
     def _delegate(self, run: Run, ctx: "_Context", scope: Scope, task: str, context: str) -> tuple[str, dict]:
         """Run a sub-agent on `task` in a fresh context with the same tools; its tool cards nest under this call's card."""
-        groups = set(scope.groups) - {"agents"}
+        groups = set(scope.groups) - {"agents", "goal"}  # no nested delegation; the goal is the main agent's
         sub = Scope(
             groups=groups, tools={n: t for n, t in scope.tools.items() if n not in SUB_AGENT_EXCLUDED and (t.group == "core" or t.group in groups)},
             images=[], videos=[], workspace=scope.workspace, params=scope.params,
@@ -470,8 +562,13 @@ class Agent:
             run.emit({"type": "tool", "tool": dict(card)})
             text, extra = tool.handler(ctx, args)
             card.update(extra, status="done")
+            run.tool_seq += 1
             if name in WRITE_TOOLS or name == "run_command" or tool.group == "mcp":
                 run.call_counts.clear()  # something may have changed, so repeating a read is legitimate again
+            if name in WRITE_TOOLS:
+                run.wrote_at = run.tool_seq
+            elif name == "run_command":
+                run.ran_at = run.tool_seq
         except ToolError as exc:
             card.update(status="error", error=str(exc))
             text = f"工具出错：{exc}"
@@ -481,3 +578,10 @@ class Agent:
             text = f"工具出错：{type(exc).__name__}: {exc}"
         run.emit({"type": "tool", "tool": dict(card)})
         return text
+
+
+GOAL_FIELDS = ("text", "status", "note", "question", "summary", "verification", "rounds", "seconds", "progress", "created", "updated")
+
+
+def _public_goal(goal: dict) -> dict:
+    return {k: goal.get(k) for k in GOAL_FIELDS}

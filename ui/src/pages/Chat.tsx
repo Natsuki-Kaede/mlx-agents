@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { ArrowDown, ImageIcon, MessageSquarePlus, ScanSearch, Trash2 } from "lucide-react";
+import { ArrowDown, ImageIcon, MessageSquarePlus, ScanSearch, Target, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -7,6 +7,7 @@ import {
   runEvents,
   type ChatSummary,
   type ChatTurn,
+  type Goal,
   type ModelList,
   type OutputMeta,
   type RunEvent,
@@ -24,6 +25,7 @@ import { ToolTimeline } from "../components/ToolTimeline";
 import { usePersistentState } from "../components/usePersistentState";
 import { useStickToBottom } from "../components/useStickToBottom";
 import { Button, ErrorNote, Glass, spring } from "../components/ui";
+import { GoalCard } from "../components/GoalCard";
 import { applySettings } from "../settingsStore";
 
 const ASPECTS: Record<string, number> = { "1:1": 1, "3:4": 3 / 4, "4:3": 4 / 3, "9:16": 9 / 16, "16:9": 16 / 9 };
@@ -83,6 +85,8 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   const [run, setRun] = useState<RunInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [goal, setGoal] = useState<Goal | null>(null);
+  const [goalMode, setGoalMode] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [models, setModels] = useState<ModelList | null>(null);
   const { ref: list, contentRef, atBottom, scrollToBottom } = useStickToBottom();
@@ -99,6 +103,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     const chat = await api.chat(id);
     if (chatIdRef.current !== id) return;
     setTurns(chat.turns);
+    setGoal(chat.goal ?? null);
   }, []);
 
   /** Follow a run: replay its events into a live assistant turn, then reload the chat it saved. */
@@ -117,6 +122,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
           if (ev.type === "status") setRun((r) => r && { ...r, status: ev.status });
           if (ev.type === "status" && ev.note) setNotice(ev.note);
           if (ev.type === "auto_approve") applySettings({ auto_approve: ev.auto_approve });
+          if (ev.type === "goal") setGoal(ev.goal);
           if (ev.type === "end" && ev.error) setError(ev.error);
           live = applyEvent(live, ev);
           setTurns((ts) => [...ts.slice(0, -1), live]);
@@ -144,8 +150,10 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       setNotice(null);
       setUi((u) => ({ ...u, chatId: id }));
       setShowHistory(false);
+      setGoalMode(false);
       if (!id) {
         setTurns([]);
+        setGoal(null);
         return;
       }
       try {
@@ -184,9 +192,10 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     }
   };
 
-  const send = async () => {
-    const files = attachments;
-    const text = input.trim() || (files.length ? "请描述这些内容。" : "");
+  const send = () => sendMessage(input.trim() || (attachments.length ? "请描述这些内容。" : ""), attachments, goalMode);
+
+  /** Start a run; `asGoal` makes the message the chat's new goal (an unfinished goal is continued anyway). */
+  const sendMessage = async (text: string, files: Upload[], asGoal: boolean) => {
     const id = chatIdRef.current ?? newId();
     if (!chatIdRef.current) {
       chatIdRef.current = id;
@@ -197,10 +206,11 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     setError(null);
     setNotice(null);
     const before = turns;
-    setTurns([...before, { role: "user", mode: "chat", content: text, attachments: files }]);
+    setTurns([...before, { role: "user", mode: asGoal ? "goal" : "chat", content: text, attachments: files }]);
     scrollToBottom();
     try {
-      const info = await api.startRun({ chat_id: id, content: text, attachments: files.map((a) => a.id) });
+      const info = await api.startRun({ chat_id: id, content: text, attachments: files.map((a) => a.id), goal: asGoal });
+      setGoalMode(false);
       follow(info);
       refreshChats();
     } catch (e) {
@@ -296,6 +306,23 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
         )}
 
         <div className="flex min-h-0 min-w-0 flex-col gap-4">
+          {goal && chatId && (
+            <GoalCard
+              goal={goal}
+              running={running}
+              onStop={() => run && api.cancelRun(run.id).catch((e) => setError(errorText(e)))}
+              onContinue={() => sendMessage("继续推进目标。", [], false)}
+              onClear={() =>
+                api
+                  .clearGoal(chatId)
+                  .then(() => {
+                    setGoal(null);
+                    refreshChats();
+                  })
+                  .catch((e) => setError(errorText(e)))
+              }
+            />
+          )}
           <div className="relative min-h-0 flex-1">
             <div ref={list} className="scroll-soft h-full overflow-y-auto px-1">
               <div ref={contentRef} className="min-h-full space-y-4 pb-2">
@@ -325,8 +352,8 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
                       <div className={`max-w-[85%] ${turn.role === "user" ? "items-end" : "w-full items-start"} flex flex-col gap-2`}>
                         {turn.role === "user" && turn.mode && turn.mode !== "chat" && (
                           <span className="ink-soft inline-flex items-center gap-1 text-[11px]">
-                            {turn.mode === "image" ? <ImageIcon className="size-3" /> : <ScanSearch className="size-3" />}
-                            {turn.mode === "image" ? "生图" : "反推"}
+                            {turn.mode === "goal" ? <Target className="size-3" /> : turn.mode === "image" ? <ImageIcon className="size-3" /> : <ScanSearch className="size-3" />}
+                            {turn.mode === "goal" ? "目标" : turn.mode === "image" ? "生图" : "反推"}
                           </span>
                         )}
                         {!!turn.attachments?.length && (
@@ -418,6 +445,9 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             models={models?.models ?? []}
             defaultModel={models?.default_chat ?? null}
             onRefreshModels={refreshModels}
+            goalMode={goalMode}
+            onGoalMode={setGoalMode}
+            goalOpen={!!goal && goal.status !== "done"}
           />
         </div>
       </div>

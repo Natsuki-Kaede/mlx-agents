@@ -6,6 +6,7 @@ Served only by the desktop client (desktop/app.py), which runs it on a loopback 
 
 import asyncio
 import json
+import time
 import re
 import shutil
 import subprocess
@@ -58,6 +59,7 @@ class RunRequest(BaseModel):
     chat_id: str
     content: str = ""
     attachments: list[str] = []
+    goal: bool = False  # the message sets a new goal for the chat
 
 
 class Decision(BaseModel):
@@ -154,11 +156,24 @@ def start_run(req: RunRequest):
         attachments.append({"id": name, "kind": kind, "url": f"/media/uploads/{name}", "path": str(path)})
     if attachments and not model.vision:
         raise HTTPException(400, f"{model.id} 是纯文本模型，看不了图片或视频；请换一个视觉模型")
+    content = req.content.strip() or "请描述这个内容。"
     request = req.model_dump() | {
-        "attachments": attachments, "content": req.content.strip() or "请描述这个内容。", "model": model.id,
+        "attachments": attachments, "content": content, "model": model.id,
         "permissions": settings["permissions"], "params": settings["params"] | {"reasoning": settings["reasoning"]},
+        "goal": goal_for_run(req.chat_id, content, req.goal),
+        "goal_budget": {"rounds": settings["goal_max_rounds"], "minutes": settings["goal_max_minutes"]},
     }
     return agent.start(request).public()
+
+
+def goal_for_run(chat_id: str, content: str, new: bool) -> dict | None:
+    """The goal a run works on: a new one, or the chat's unfinished goal (a message then continues it)."""
+    if new:
+        return {"text": content, "status": "active", "rounds": 0, "seconds": 0, "created": time.time(), "updated": time.time(), "new": True}
+    current = (store.load_chat(chat_id) or {}).get("goal")
+    if current and current.get("status") in ("active", "waiting", "paused", "stalled"):
+        return current | {"status": "active", "note": None, "question": None}
+    return None
 
 
 def get_run(run_id: str):
@@ -246,6 +261,14 @@ async def job_events(job_id: str):
 @app.get("/api/chats")
 def list_chats():
     return store.list_chats()
+
+
+@app.delete("/api/chats/{chat_id}/goal")
+def clear_goal(chat_id: str):
+    if agent.active_run(checked_chat_id(chat_id)):
+        raise HTTPException(409, "目标还在运行，先停止再结束")
+    store.update_chat(chat_id, lambda c: {k: v for k, v in c.items() if k != "goal"})
+    return {"id": chat_id}
 
 
 @app.get("/api/chats/{chat_id}")
@@ -357,6 +380,8 @@ class SettingsPatch(BaseModel):
     reasoning: Literal["off", "low", "medium", "high"] | None = None
     params: GenParams | None = None
     instructions: str | None = Field(None, max_length=20000)
+    goal_max_rounds: int | None = Field(None, ge=10, le=1000)
+    goal_max_minutes: int | None = Field(None, ge=5, le=600)
 
 
 @app.get("/api/settings")

@@ -5,6 +5,8 @@ import {
   Bot,
   Brain,
   Check,
+  CircleHelp,
+  Flag,
   ChevronDown,
   Download,
   FilePen,
@@ -184,6 +186,20 @@ function describe(tool: ToolEvent, job: Job | null): { icon: typeof Search; titl
           </div>
         ),
       };
+    case "finish_goal":
+      return {
+        icon: Flag,
+        title: tool.status === "error" ? "尝试结束目标" : "完成目标",
+        detail: clip(a.summary, 60),
+        body: (
+          <div className="ink-soft mt-2 border-l-2 border-[var(--glass-edge)] pl-3 text-xs leading-relaxed whitespace-pre-wrap">
+            {String(a.summary ?? "")}
+            {a.verification ? `\n\n验证：${String(a.verification)}` : ""}
+          </div>
+        ),
+      };
+    case "ask_user":
+      return { icon: CircleHelp, title: "向你提问", detail: clip(a.question, 70) };
     case "remember":
       return { icon: Brain, title: `记住：${clip(a.text, 50)}`, detail: "" };
     case "forget":

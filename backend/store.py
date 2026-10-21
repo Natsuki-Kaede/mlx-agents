@@ -106,6 +106,9 @@ DEFAULT_SETTINGS = {
     "reasoning": "off",
     "params": {"max_tokens": 1024, "temperature": 0.7, "repetition_penalty": 1.1, "top_p": 0.95, "top_k": 20},
     "instructions": "",  # global instructions, like an AGENTS.md
+    # Budget of one goal run (it pauses when either runs out; the user can continue it).
+    "goal_max_rounds": 120,
+    "goal_max_minutes": 60,
 }
 
 
