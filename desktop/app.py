@@ -97,6 +97,15 @@ def dark_mode() -> bool:
     return out.stdout.strip() == "Dark"
 
 
+# The app icon (desktop/make_icon.py) as vector art: gradient squircle, a large and a small four-point sparkle.
+LOGO = """<svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><defs>
+<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b6cff"/><stop offset="1" stop-color="#b25bff"/></linearGradient>
+<radialGradient id="s" cx=".5" cy="0" r=".75"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+<rect width="100" height="100" rx="22.5" fill="url(#g)"/><rect width="100" height="100" rx="22.5" fill="url(#s)"/>
+<path fill="#fff" fill-opacity=".97" d="M80 53Q49.33 55.33 47 86Q44.67 55.33 14 53Q44.67 50.67 47 20Q49.33 50.67 80 53Z"/>
+<path fill="#fff" fill-opacity=".84" d="M86 25Q75.78 25.78 75 36Q74.22 25.78 64 25Q74.22 24.22 75 14Q75.78 24.22 86 25Z"/></svg>"""
+
+
 def page(title: str, detail: str, dark: bool, spinner: bool) -> str:
     bg, ink, soft = ("#07090f", "#eef1fb", "rgba(238,241,251,.6)") if dark else ("#e9edf5", "#0f1424", "rgba(15,20,36,.55)")
     ring = '<div class="ring"></div>' if spinner else ""
@@ -105,11 +114,11 @@ html,body{{height:100%;margin:0;background:{bg};color:{ink};font-family:-apple-s
 .blob{{position:fixed;width:60vmax;height:60vmax;border-radius:50%;filter:blur(80px);opacity:.55}}
 .b1{{background:#5b6cff;top:-20vmax;left:-15vmax}}.b2{{background:#b25bff;bottom:-25vmax;right:-15vmax}}
 .c{{position:relative;height:100%;display:grid;place-items:center;text-align:center}}
-.logo{{width:64px;height:64px;margin:0 auto 18px;border-radius:20px;background:linear-gradient(135deg,#5b6cff,#b25bff);box-shadow:0 10px 30px rgba(91,108,255,.45)}}
+.logo{{display:block;width:72px;height:72px;margin:0 auto 18px;filter:drop-shadow(0 10px 24px rgba(91,108,255,.45))}}
 h1{{font-size:22px;font-weight:600;margin:0}}p{{color:{soft};font-size:13px;margin:8px 0 0;max-width:520px}}
 .ring{{width:22px;height:22px;margin:22px auto 0;border-radius:50%;border:3px solid rgba(127,127,127,.25);border-top-color:#7c8bff;animation:s 1s linear infinite}}
 @keyframes s{{to{{transform:rotate(360deg)}}}}</style></head>
-<body><div class="blob b1"></div><div class="blob b2"></div><div class="c"><div><div class="logo"></div>
+<body><div class="blob b1"></div><div class="blob b2"></div><div class="c"><div>{LOGO}
 <h1>{title}</h1><p>{detail}</p>{ring}</div></div></body></html>"""
 
 
