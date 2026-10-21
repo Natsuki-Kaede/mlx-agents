@@ -3,10 +3,12 @@ queued on the engine's MLX thread; tools and approval waits run on the run's thr
 
 A run records its events (streamed text, tool cards, plan, approvals) so clients can attach, detach and
 replay at any time; it saves the user turn when it starts and the assistant turn when it ends, so closing the
-window or switching chats never loses work. Writes and commands wait for the user's approval unless the chat
-auto-approves them. Long tasks keep the context bounded by trimming older tool results.
+window or switching chats never loses work. Writes and commands wait for the user's approval unless the
+auto-approve mode is on. Long tasks keep the context bounded by trimming older tool results and, when that is not
+enough, summarising the earlier work.
 """
 
+import json
 import re
 import threading
 import time
@@ -28,6 +30,10 @@ KEEP_FULL_TOOL_RESULTS = 3
 TRIMMED_TOOL_CHARS = 500
 APPROVAL_TIMEOUT = 1800
 KEEP_FINISHED_RUNS = 50
+MAX_FORMAT_RETRIES = 2  # malformed tool-call markup is sent back for another try this often in a row
+MAX_REPEATS = 2  # an identical call (same tool and arguments, nothing changed since) runs at most this often
+SUMMARY_KEEP = 6  # latest messages kept verbatim when earlier work is summarised
+WRITE_TOOLS = {"write_file", "edit_file"}
 
 SYSTEM = """你是 MLX Agents，一个运行在用户自己 Mac 上的本地 AI agent，可以调用工具完成任务。当前时间：{now}。
 工作方式：
@@ -43,6 +49,13 @@ RULES = {
     "mcp": "- 名字以 mcp__ 开头的工具来自用户接入的 MCP 服务，按工具说明传参；调用前用户会审批（除非已设为自动批准）。",
     "agents": "- 可以独立完成、需要大量搜索或阅读的子任务，用 delegate_task 交给子 agent：它在独立的上下文里工作，只把结果报告给你，能让你的上下文保持简洁。任务描述要完整具体（目标、范围、期望的产出），子 agent 看不到这段对话，但和你用同样的工具。它的报告里说没能确认的内容，不要当作事实转述。",
 }
+FORMAT_RETRY = "上面的工具调用格式无法解析，没有执行。请严格按照工具调用格式重新调用，工具名和参数都要完整。"
+SUMMARY_SYSTEM = """你负责为一个正在工作的 AI agent 压缩上下文。阅读下面的工作记录，写一份进度摘要，让 agent 只看摘要就能接着干：
+- 已经完成的事，以及验证结果；
+- 关键事实：涉及的文件路径、命令及输出要点、错误信息、做出的决定；
+- 还没完成的事和下一步。
+只写记录里确实发生过的事，不要猜测。用中文，分条列出，不超过 500 字。"""
+
 SUB_AGENT_NOTE = """
 
 你是主 agent 派来完成一个子任务的子 agent。专注完成任务，不要向用户提问。
@@ -118,9 +131,22 @@ def history_for(turns: list[dict]) -> list[dict]:
     return out
 
 
-def _compact(convo: list[dict]) -> None:
+def _chars(convo: list[dict]) -> int:
+    return sum(len(str(m.get("content", ""))) + len(json.dumps(m.get("tool_calls", ""), ensure_ascii=False)) for m in convo)
+
+
+def _render(message: dict) -> str:
+    """One message of the work record, as text for the summariser."""
+    if message.get("tool_calls"):
+        calls = "；".join(f"{c['function']['name']}({json.dumps(c['function'].get('arguments'), ensure_ascii=False)[:300]})" for c in message["tool_calls"])
+        return f"[agent 调用工具] {calls}" + (f"\n{message['content']}" if message.get("content") else "")
+    label = {"tool": "工具结果", "assistant": "agent", "user": "用户/系统"}.get(message["role"], message["role"])
+    return f"[{label}] {str(message.get('content', ''))[:1500]}"
+
+
+def _trim(convo: list[dict]) -> None:
     """Trim all but the latest tool results once the conversation gets long."""
-    if sum(len(str(m.get("content", ""))) for m in convo) <= CONTEXT_CHARS:
+    if _chars(convo) <= CONTEXT_CHARS:
         return
     tool_indexes = [i for i, m in enumerate(convo) if m["role"] == "tool"]
     for i in tool_indexes[:-KEEP_FULL_TOOL_RESULTS]:
@@ -140,6 +166,7 @@ class Run:
     plan: list[dict] = field(default_factory=list)
     created: float = field(default_factory=time.time)
     history: list[dict] = field(default_factory=list)
+    call_counts: dict[str, int] = field(default_factory=dict)
     _cancel: bool = False
     _cond: threading.Condition = field(default_factory=threading.Condition)
     _decisions: dict[str, str] = field(default_factory=dict)
@@ -302,8 +329,11 @@ class Agent:
 
     def _loop(self, run: Run, scope: Scope, convo: list[dict], emit_text, max_rounds: int, result: dict) -> None:
         """Alternate model rounds and tool calls until the model answers without calling a tool, the round
-        budget runs out (the last round offers no tools) or the run is cancelled. Accumulates into `result`."""
+        budget runs out (the last round offers no tools) or the run is cancelled. Malformed tool-call markup is
+        sent back for another try. Accumulates into `result`."""
         schemas = [t.schema() for t in scope.tools.values()]
+        anchor = len(convo)  # messages before this loop's own work: never summarised away
+        format_retries = 0
         for round_ in range(max_rounds + 1):
             if run.cancelled():
                 break  # also covers a run stopped while still queued, before any model is loaded
@@ -311,34 +341,75 @@ class Agent:
             if round_ and result["answer"] and not result["answer"].endswith("\n\n"):
                 emit_text("answer", "\n\n", result["tokens"])  # keep text from separate rounds in separate paragraphs
                 result["answer"] += "\n\n"
-            waited = []
-
-            def queued() -> None:
-                waited.append(True)
-                run.emit({"type": "status", "status": "queued"})
-
-            try:
-                stats = self.engine.call(
-                    "chat", self.engine.stream, convo, scope.images, scope.videos, scope.params, emit_text,
-                    tools=offered, token_base=result["tokens"], cancelled=run.cancelled, model_id=scope.model,
-                    abort=run.cancelled, on_queued=queued, on_started=lambda: waited and run.emit({"type": "status", "status": "running"}),
-                )
-            except Cancelled:
+            stats = self._generate(run, scope, convo, emit_text, offered, result["tokens"])
+            if stats is None:
                 break
             if offered and not stats["tools_supported"] and round_ == 0 and scope.parent is None:
                 run.emit({"type": "status", "status": "running", "note": f"{stats['model']} 没有工具调用格式，这次只能直接回答"})
             result["stats"], result["tokens"], result["answer"] = stats, stats["tokens"], result["answer"] + stats["text"]
             result["thinking"] += ("\n\n" if result["thinking"] and stats["thinking"] else "") + stats["thinking"]
             result["peak"], result["load"] = max(result["peak"], stats["peak_mlx_gb"]), result["load"] + stats["load_seconds"]
-            if stats["stopped"] or not stats["tool_calls"]:
+            if stats["stopped"]:
                 break
             calls = stats["tool_calls"]
+            if not calls and offered and stats.get("tool_markup", "").strip() and format_retries < MAX_FORMAT_RETRIES:
+                format_retries += 1
+                convo.append({"role": "assistant", "content": stats["text"] + stats["tool_markup"]})
+                convo.append({"role": "user", "content": FORMAT_RETRY})
+                run.emit({"type": "status", "status": "running", "note": "模型的工具调用格式有误，已让它重试"})
+                continue
+            if not calls:
+                break
+            format_retries = 0
             convo.append({"role": "assistant", "content": stats["text"], "tool_calls": [{"type": "function", "function": c} for c in calls]})
             for call in calls:
                 convo.append({"role": "tool", "content": self._call_tool(run, call, scope)})
                 if run.cancelled():
                     break
-            _compact(convo)
+            self._compact(run, scope, convo, anchor)
+
+    def _generate(self, run: Run, scope: Scope, convo: list[dict], emit_text, tools, token_base) -> dict | None:
+        """One model call on the MLX thread; None when the run was cancelled while it waited."""
+        waited = []
+
+        def queued() -> None:
+            waited.append(True)
+            run.emit({"type": "status", "status": "queued"})
+
+        def started() -> None:
+            if waited:
+                run.emit({"type": "status", "status": "running"})
+
+        try:
+            return self.engine.call(
+                "chat", self.engine.stream, convo, scope.images, scope.videos, scope.params, emit_text,
+                tools=tools, token_base=token_base, cancelled=run.cancelled, model_id=scope.model,
+                abort=run.cancelled, on_queued=queued, on_started=started,
+            )
+        except Cancelled:
+            return None
+
+    def _compact(self, run: Run, scope: Scope, convo: list[dict], anchor: int) -> None:
+        """Keep the context bounded: trim older tool results, and if that is not enough, replace the earlier
+        part of this loop's work with a summary written by the model."""
+        _trim(convo)
+        if _chars(convo) <= CONTEXT_CHARS:
+            return
+        cut = len(convo) - SUMMARY_KEEP
+        while cut > anchor and convo[cut]["role"] == "tool":
+            cut -= 1  # keep tool results together with the call that produced them
+        if cut - anchor < 4:
+            return
+        transcript = "\n\n".join(_render(m) for m in convo[anchor:cut])[-30000:]
+        params = scope.params | {"reasoning": "off", "max_tokens": 900}
+        prompt = [{"role": "system", "content": SUMMARY_SYSTEM}, {"role": "user", "content": transcript}]
+        stats = self._generate(run, Scope(set(), {}, [], [], scope.workspace, params, scope.model, parent=scope.parent), prompt, None, None, None)
+        summary = (stats or {}).get("text", "").strip()
+        if not summary:
+            return
+        convo[anchor:cut] = [{"role": "user", "content": f"【较早的工作已压缩成进度摘要】\n{summary}"}]
+        if scope.parent is None:
+            run.emit({"type": "status", "status": "running", "note": "上下文较长，已把较早的过程压缩成进度摘要"})
 
     def _delegate(self, run: Run, ctx: "_Context", scope: Scope, task: str, context: str) -> tuple[str, dict]:
         """Run a sub-agent on `task` in a fresh context with the same tools; its tool cards nest under this call's card."""
@@ -379,6 +450,10 @@ class Agent:
         try:
             if tool is None:
                 raise ToolError(f"工具 {name} 在这段对话里没有开启" if name in TOOLS else f"没有叫 {name} 的工具")
+            signature = name + json.dumps(args, sort_keys=True, ensure_ascii=False)
+            count = run.call_counts[signature] = run.call_counts.get(signature, 0) + 1
+            if count > MAX_REPEATS and name != "update_plan":
+                raise ToolError(f"这个调用已经用完全相同的参数执行过 {count - 1} 次，期间没有任何修改，结果不会变。请换个做法，或根据已有结果继续。")
             # Read live, so switching the auto-approve mode on during a run applies to its next call.
             if tool.approval and not store.settings()["auto_approve"]:
                 card.update(status="awaiting_approval", approval=tool.preview(ctx, args) if tool.preview else {"summary": name, "detail": ""})
@@ -395,6 +470,8 @@ class Agent:
             run.emit({"type": "tool", "tool": dict(card)})
             text, extra = tool.handler(ctx, args)
             card.update(extra, status="done")
+            if name in WRITE_TOOLS or name == "run_command" or tool.group == "mcp":
+                run.call_counts.clear()  # something may have changed, so repeating a read is legitimate again
         except ToolError as exc:
             card.update(status="error", error=str(exc))
             text = f"工具出错：{exc}"

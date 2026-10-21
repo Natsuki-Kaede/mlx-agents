@@ -408,6 +408,7 @@ class Engine:
             "text": split.answer,
             "thinking": split.thinking,
             "tool_calls": fmt.parse_tool_calls(split.tool_text, tools) if tools else [],
+            "tool_markup": split.tool_text if tools else "",  # raw call markup, to report calls that did not parse
             "tools_supported": fmt.tool_start is not None,
             "model": info.id,
             "tokens": tokens,
