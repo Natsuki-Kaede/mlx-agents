@@ -1,4 +1,4 @@
-import { Bot, FolderOpen, Globe, ImageIcon, Plug, ShieldCheck, ShieldOff, Terminal } from "lucide-react";
+import { FolderOpen, Globe, ImageIcon, Plug, ShieldCheck, ShieldOff, Terminal } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import type { AppSettings, Permissions, SettingsPatch } from "../api";
 import { Toggle } from "./ui";
@@ -11,7 +11,6 @@ export const PERMISSION_ITEMS: { key: keyof Permissions; label: string; hint: st
   { key: "files", label: "文件", hint: "在工作目录里查找、搜索、读写文件；写入前需要你批准", icon: FolderOpen },
   { key: "exec", label: "命令", hint: "在工作目录里运行命令；运行前需要你批准", icon: Terminal },
   { key: "mcp", label: "MCP", hint: "调用你在设置里接入的 MCP 服务的工具；调用前需要你批准", icon: Plug },
-  { key: "agents", label: "子 agent", hint: "把独立的子任务交给子 agent，在单独的上下文里完成后汇报", icon: Bot },
 ];
 
 /** The agent's tools and the auto-approve mode; they apply to every chat and are remembered. */

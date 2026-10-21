@@ -63,7 +63,7 @@ export type Job = {
 };
 
 /** Which tool groups the agent may use; global and remembered, like the auto-approve mode. */
-export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean; mcp: boolean; agents: boolean };
+export type Permissions = { web: boolean; image: boolean; files: boolean; exec: boolean; mcp: boolean };
 
 export type PlanStep = { text: string; status: "pending" | "in_progress" | "done" };
 export type ToolEvent = {

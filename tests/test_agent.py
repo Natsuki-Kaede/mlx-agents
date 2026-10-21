@@ -71,7 +71,7 @@ def test_sub_agent_gets_chat_tools_but_cannot_delegate_or_finish_goals(run_scrip
     (store.workspace() / "a.py").write_text("print(1)\n")
     r, engine, _ = run_script(
         [("", call("delegate_task", task="读 a.py")), ("", call("read_file", path="a.py")), ("打印 1", []), ("好", [])],
-        permissions={"files": True, "agents": True},
+        permissions={"files": True},  # sub-agents need no switch
     )
     names = [n for n, _ in tools_of(r)]
     assert names == ["delegate_task", "read_file"] and r.tools[1]["parent"] == r.tools[0]["id"]

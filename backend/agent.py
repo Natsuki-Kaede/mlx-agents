@@ -337,7 +337,8 @@ class Agent:
 
     def _execute(self, run: Run) -> None:
         req = run.request
-        groups = {g for g, on in (req.get("permissions") or {}).items() if on}
+        # Sub-agents are always offered; the model decides when a task is worth delegating.
+        groups = {g for g, on in (req.get("permissions") or {}).items() if on} | {"agents"}
         attachments = req.get("attachments") or []
         run.status = "running"
         run.emit({"type": "status", "status": "running"})

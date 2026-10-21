@@ -50,7 +50,6 @@ class Permissions(BaseModel):
     files: bool = False
     exec: bool = False
     mcp: bool = False
-    agents: bool = False
 
 
 class RunRequest(BaseModel):

@@ -104,7 +104,7 @@ def forget(memory_id: str) -> bool:
 DEFAULT_SETTINGS = {
     "workspace": str(DEFAULT_WORKSPACE),
     # The tool switches and the auto-approve mode apply to every chat and are remembered.
-    "permissions": {"web": False, "image": True, "files": False, "exec": False, "mcp": False, "agents": False},
+    "permissions": {"web": False, "image": True, "files": False, "exec": False, "mcp": False},
     "auto_approve": False,
     "reasoning": "off",
     "params": {"max_tokens": 1024, "temperature": 0.7, "repetition_penalty": 1.1, "top_p": 0.95, "top_k": 20},
@@ -122,6 +122,7 @@ def settings() -> dict:
     merged = DEFAULT_SETTINGS | saved
     for key in ("permissions", "params"):
         merged[key] = DEFAULT_SETTINGS[key] | (saved.get(key) or {})
+    merged["permissions"].pop("agents", None)  # sub-agents no longer have a switch
     return merged
 
 
