@@ -1,0 +1,45 @@
+ui/src/components/settings/GeneralSection.tsx
+  s_269b95d29ae1c3::t_16ebd3c3889980 116-127
+  s_269b95d29ae1c3::t_2ef16a16351590 1,21,24,33,62-69
+  s_269b95d29ae1c3::t_6ef1b1a0dceb6d 128
+ui/src/components/ToolTimeline.tsx
+  s_269b95d29ae1c3::t_16ebd3c3889980 8-9,189-202
+backend/store.py
+  s_269b95d29ae1c3::t_b69449504e0952 109-110
+  s_269b95d29ae1c3::t_d36cb09f2173f5 111
+backend/main.py
+  s_269b95d29ae1c3::t_2dba2fbc54ec87 9,62,159,161,163-164,169-178,266-273
+  s_269b95d29ae1c3::t_fdc0c84c0897a2 383-384
+ui/src/pages/Chat.tsx
+  s_269b95d29ae1c3::t_a92a414195700d 2,10,28,88-89,106,125,153,156,195-198,209,212-213,309-325,355-356,448-450
+ui/src/components/Composer.tsx
+  s_269b95d29ae1c3::t_98869e399e99f1 2,27-29,95-101,108-121
+ui/src/api.ts
+  s_269b95d29ae1c3::t_a92a414195700d 106
+  s_269b95d29ae1c3::t_98869e399e99f1 127-142
+  s_269b95d29ae1c3::t_5932294594cc78 151,167-168,225-226
+backend/agent.py
+  s_269b95d29ae1c3::t_1692318f722335 9-11,38,56-66,81,83-85,187-193,252-253,277-291,306-308,312,348-357,366,380-384,387-404,408-410,413-414,418-419,427,443-450,452,458-459,503,508,565,568-571,581-586
+  s_269b95d29ae1c3::t_43cd9854d3b028 587
+backend/tools.py
+  s_269b95d29ae1c3::t_b69449504e0952 62-63,69,462-469,506-512
+ui/src/components/GoalCard.tsx
+  s_269b95d29ae1c3::t_01afe2a98750bd 47-52
+  s_269b95d29ae1c3::t_391e39f938cf12 1-46,53-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1de31834b361654f2ad5b2cd7bb24dccc65b180",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
