@@ -3,6 +3,7 @@ import { Brain, Check, ChevronUp } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import type { Reasoning } from "../api";
 import { spring } from "./ui";
+import { MenuPanel } from "./MenuPanel";
 import { useDismiss } from "./useDismiss";
 
 export const REASONING: { value: Reasoning; label: string; hint: string }[] = [
@@ -18,9 +19,9 @@ export function ReasoningMenu({ value, onChange }: { value: Reasoning; onChange:
   const root = useRef<HTMLDivElement>(null);
   const current = REASONING.find((r) => r.value === value) ?? REASONING[0];
 
-  useDismiss(open, useCallback(() => setOpen(false), []), root);
+  const panel = useRef<HTMLDivElement>(null);
+  useDismiss(open, useCallback(() => setOpen(false), []), root, panel);
 
-  // The wrapper is not positioned: the menu anchors to the input bar, so it stays on screen at narrow widths.
   return (
     <div ref={root} className="shrink-0 self-center">
       <button
@@ -40,14 +41,7 @@ export function ReasoningMenu({ value, onChange }: { value: Reasoning; onChange:
         </motion.span>
       </button>
       {open && (
-        <motion.div
-          role="menu"
-          initial={{ y: 8, scale: 0.96 }}
-          animate={{ y: 0, scale: 1 }}
-          transition={spring}
-          style={{ originX: 1, originY: 1 }}
-          className="glass glass-solid absolute right-2 bottom-full z-30 mb-2 max-w-[calc(100%-1rem)] w-60 rounded-2xl p-1.5"
-        >
+        <MenuPanel anchor={root} panelRef={panel} width={240} className="p-1.5">
           <div className="ink-faint px-2.5 pt-1 pb-1.5 text-[11px] font-medium">推理等级</div>
           {REASONING.map((r) => (
             <button
@@ -70,7 +64,7 @@ export function ReasoningMenu({ value, onChange }: { value: Reasoning; onChange:
               {r.value === value && <Check className="size-4 text-[var(--accent)]" />}
             </button>
           ))}
-        </motion.div>
+        </MenuPanel>
       )}
     </div>
   );

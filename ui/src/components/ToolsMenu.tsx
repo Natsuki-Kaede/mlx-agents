@@ -1,8 +1,8 @@
-import { motion } from "motion/react";
 import { Bot, FolderOpen, Globe, ImageIcon, Plug, ShieldCheck, ShieldOff, Terminal } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import type { AppSettings, Permissions, SettingsPatch } from "../api";
-import { Toggle, spring } from "./ui";
+import { Toggle } from "./ui";
+import { MenuPanel } from "./MenuPanel";
 import { useDismiss } from "./useDismiss";
 
 export const PERMISSION_ITEMS: { key: keyof Permissions; label: string; hint: string; icon: typeof Globe }[] = [
@@ -21,9 +21,9 @@ export function ToolsMenu({ value, onChange }: { value: AppSettings; onChange: (
   const enabled = PERMISSION_ITEMS.filter((i) => value.permissions[i.key]);
   const auto = value.auto_approve;
 
-  useDismiss(open, useCallback(() => setOpen(false), []), root);
+  const panel = useRef<HTMLDivElement>(null);
+  useDismiss(open, useCallback(() => setOpen(false), []), root, panel);
 
-  // The wrapper is not positioned: the menu anchors to the input bar, so it stays on screen at narrow widths.
   return (
     <div ref={root} className="shrink-0 self-center">
       <button
@@ -40,14 +40,7 @@ export function ToolsMenu({ value, onChange }: { value: AppSettings; onChange: (
         </span>
       </button>
       {open && (
-        <motion.div
-          role="menu"
-          initial={{ y: 8, scale: 0.96 }}
-          animate={{ y: 0, scale: 1 }}
-          transition={spring}
-          style={{ originX: 1, originY: 1 }}
-          className="glass glass-solid scroll-soft absolute right-2 bottom-full z-30 mb-2 max-h-[max(12rem,calc(100dvh-15rem))] w-80 max-w-[calc(100%-1rem)] space-y-1 overflow-y-auto rounded-2xl p-2"
-        >
+        <MenuPanel anchor={root} panelRef={panel} width={320} className="space-y-1 p-2">
           <div className="ink-faint px-2 pt-0.5 pb-1 text-[11px] font-medium">Agent 可以使用</div>
           {PERMISSION_ITEMS.map(({ key, label, hint, icon: Icon }) => (
             <div key={key} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-[var(--glass-fill)]">
@@ -67,7 +60,7 @@ export function ToolsMenu({ value, onChange }: { value: AppSettings; onChange: (
             </div>
             <Toggle checked={auto} onChange={(v) => onChange({ auto_approve: v })} label="" />
           </div>
-        </motion.div>
+        </MenuPanel>
       )}
     </div>
   );

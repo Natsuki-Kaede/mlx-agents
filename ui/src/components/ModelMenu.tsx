@@ -3,6 +3,7 @@ import { Check, ChevronUp, Cpu, Eye } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { openSettings, type ModelInfo } from "../api";
 import { spring } from "./ui";
+import { MenuPanel } from "./MenuPanel";
 import { useDismiss } from "./useDismiss";
 
 export function modelMeta(m: ModelInfo) {
@@ -23,7 +24,8 @@ export function ModelMenu({
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  useDismiss(open, useCallback(() => setOpen(false), []), root);
+  const panel = useRef<HTMLDivElement>(null);
+  useDismiss(open, useCallback(() => setOpen(false), []), root, panel);
   const chat = models.filter((m) => m.kind === "chat");
   const current = value;
   const choose = (id: string) => {
@@ -52,14 +54,7 @@ export function ModelMenu({
         </motion.span>
       </button>
       {open && (
-        <motion.div
-          role="menu"
-          initial={{ y: 8, scale: 0.96 }}
-          animate={{ y: 0, scale: 1 }}
-          transition={spring}
-          style={{ originX: 0.5, originY: 1 }}
-          className="glass glass-solid scroll-soft absolute right-2 bottom-full z-30 mb-2 max-h-[max(12rem,calc(100dvh-15rem))] w-96 max-w-[calc(100%-1rem)] overflow-y-auto rounded-2xl p-1.5"
-        >
+        <MenuPanel anchor={root} panelRef={panel} width={384} className="p-1.5">
           <div className="ink-faint px-2.5 pt-1 pb-1.5 text-[11px] font-medium">对话模型</div>
           {!chat.length && <div className="ink-soft px-2.5 py-2 text-xs">还没有可用的对话模型</div>}
           {chat.map((m) => (
@@ -94,7 +89,7 @@ export function ModelMenu({
               下载更多模型
             </button>
           </div>
-        </motion.div>
+        </MenuPanel>
       )}
     </div>
   );
