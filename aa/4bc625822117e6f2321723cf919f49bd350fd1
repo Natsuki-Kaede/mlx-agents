@@ -1,0 +1,24 @@
+ui/src/index.css
+  s_3f34af772b621d::t_93ba2423ae7c39 27
+ui/src/App.tsx
+  s_3f34af772b621d::t_93ba2423ae7c39 179
+  s_3f34af772b621d::t_59714ad3662598 175-176
+ui/src/pages/Chat.tsx
+  s_3f34af772b621d::t_ef5ff4ee11d0bc 353-354
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aa4bc625822117e6f2321723cf919f49bd350fd1",
+  "prompts": {},
+  "sessions": {
+    "s_3f34af772b621d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8da5055c-fa29-44b2-89cc-86da292dd2b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
