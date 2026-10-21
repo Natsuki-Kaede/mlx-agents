@@ -26,7 +26,8 @@ import { usePersistentState } from "../components/usePersistentState";
 import { useStickToBottom } from "../components/useStickToBottom";
 import { Button, ErrorNote, Glass, spring } from "../components/ui";
 import { GoalCard } from "../components/GoalCard";
-import { applySettings } from "../settingsStore";
+import { COMMAND_PROMPTS, parseCommand } from "../components/slashCommands";
+import { applySettings, updateSettings, useAppSettings } from "../settingsStore";
 
 const ASPECTS: Record<string, number> = { "1:1": 1, "3:4": 3 / 4, "4:3": 4 / 3, "9:16": 9 / 16, "16:9": 16 / 9 };
 
@@ -97,7 +98,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [goal, setGoal] = useState<Goal | null>(null);
-  const [goalMode, setGoalMode] = useState(false);
+  const settings = useAppSettings();
   const [showHistory, setShowHistory] = useState(false);
   const [models, setModels] = useState<ModelList | null>(null);
   const { ref: list, contentRef, atBottom, scrollToBottom } = useStickToBottom();
@@ -169,7 +170,6 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       setNotice(null);
       setUi((u) => ({ ...u, chatId: id }));
       setShowHistory(false);
-      setGoalMode(false);
       if (!id) {
         setTurns([]);
         setGoal(null);
@@ -211,10 +211,28 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     }
   };
 
-  const send = () => sendMessage(input.trim() || (attachments.length ? "请描述这些内容。" : ""), attachments, goalMode);
+  /** Send the input, or `typed` (a command picked from the menu); slash commands are run here. */
+  const send = (typed = input) => {
+    const command = parseCommand(typed);
+    if (!command) return sendMessage(typed.trim() || (attachments.length ? "请描述这些内容。" : ""), attachments, false);
+    if (command.name === "goal") {
+      if (!command.arg) return setError("用法：/goal 目标和完成标准，例如 /goal 给项目加上单元测试并全部跑通");
+      return sendMessage(command.arg, attachments, true, typed);
+    }
+    if (command.name in COMMAND_PROMPTS) return sendMessage(COMMAND_PROMPTS[command.name], attachments, false, typed);
+    setInput("");
+    if (command.name === "new") return openChat(null);
+    if (command.name === "auto") {
+      const on = !settings?.auto_approve;
+      updateSettings({ auto_approve: on })
+        .then(() => setNotice(on ? "已开启自动批准：写文件、运行命令不再询问" : "已关闭自动批准"))
+        .catch((e) => setError(errorText(e)));
+    }
+  };
 
-  /** Start a run; `asGoal` makes the message the chat's new goal (an unfinished goal is continued anyway). */
-  const sendMessage = async (text: string, files: Upload[], asGoal: boolean) => {
+  /** Start a run; `asGoal` makes the message the chat's new goal (an unfinished goal is continued anyway).
+   * `typed` is what goes back into the input box if the run cannot start. */
+  const sendMessage = async (text: string, files: Upload[], asGoal: boolean, typed = text) => {
     const id = chatIdRef.current ?? newId();
     if (!chatIdRef.current) {
       chatIdRef.current = id;
@@ -229,12 +247,11 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     scrollToBottom();
     try {
       const info = await api.startRun({ chat_id: id, content: text, attachments: files.map((a) => a.id), goal: asGoal });
-      setGoalMode(false);
       follow(info);
       refreshChats();
     } catch (e) {
       setTurns(before);
-      setInput(text);
+      setInput(typed);
       setAttachments(files);
       setError(errorText(e));
     }
@@ -467,8 +484,6 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             models={models?.models ?? []}
             defaultModel={models?.default_chat ?? null}
             onRefreshModels={refreshModels}
-            goalMode={goalMode}
-            onGoalMode={setGoalMode}
             goalOpen={!!goal && goal.status !== "done"}
           />
         </div>

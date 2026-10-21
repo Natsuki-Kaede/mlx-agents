@@ -10,6 +10,9 @@ The app is a native macOS window (pywebview) around a local FastAPI backend and 
 
 - **One general agent** with global switches for its tools, global instructions, and the workspace's own
   `AGENTS.md` read as project instructions (as in Codex).
+- **Slash commands** in the input box: `/goal` sets a goal the agent works on autonomously until it calls it done
+  (refused while file changes are unverified), asks you something, stalls or runs out of its budget; `/review`,
+  `/init` (write `AGENTS.md`), `/auto` (auto-approve) and `/new`.
 - **Tools**, with approval before anything that writes or runs:
   - web search (DuckDuckGo) and page reading
   - image generation and image-to-image (Qwen-Image 2.1 via [mflux](https://github.com/filipstrand/mflux))
