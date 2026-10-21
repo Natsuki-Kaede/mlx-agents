@@ -23,7 +23,7 @@ from pathlib import Path
 
 from backend import mcp_servers, store
 from backend.engine import Cancelled
-from backend.tools import TOOLS, Tool, ToolError, available
+from backend.tools import Tool, ToolError, available, check_args, unknown_tool
 
 MAX_TOOL_ROUNDS = 30  # the round after the last one offers no tools, so the model has to answer
 MAX_SUB_ROUNDS = 12  # a sub-agent's budget for one delegated task
@@ -36,20 +36,22 @@ KEEP_FINISHED_RUNS = 50
 MAX_FORMAT_RETRIES = 2  # malformed tool-call markup is sent back for another try this often in a row
 MAX_REPEATS = 2  # an identical call (same tool and arguments, nothing changed since) runs at most this often
 GOAL_NUDGE_LIMIT = 3  # replies in a row without a tool call before a goal pauses as stalled
+PROJECT_DOC_CHARS = 8000
 SUMMARY_KEEP = 6  # latest messages kept verbatim when earlier work is summarised
-WRITE_TOOLS = {"write_file", "edit_file"}
+WRITE_TOOLS = {"write_file", "edit_file", "apply_patch"}
 
 SYSTEM = """你是 MLX Agents，一个运行在用户自己 Mac 上的本地 AI agent，可以调用工具完成任务。当前时间：{now}。
 工作方式：
-- 3 步以上的任务先用 update_plan 列出步骤，开始和完成每一步时更新状态；简单问题直接回答，不用列计划。
-- 只调用真正需要的工具，读到结果后再决定下一步；不要编造工具没有返回的信息，出错时如实说明并换个办法。
+- 用户要你做事时，直接调用工具去做并做完：不要只给出方案或说“我将会……”就停下；除非用户只是提问、讨论或要求先出方案。遇到障碍先自己想办法解决。
+- 3 步以上的任务先用 update_plan 列出步骤，开始和完成每一步时更新状态；简单问题直接回答，不用列计划，也不要列只有一步的计划。
+- 只调用真正需要的工具，读到结果后再决定下一步；不要编造工具没有返回的信息。工具出错时读懂错误信息，修正参数或换个办法再试，不要原样重复同一个调用。
 - 用户表达了值得长期记住的偏好或背景时，用 remember 保存。
 {rules}{instructions}{memory}"""
 RULES = {
     "web": "- 需要最新信息、具体数据或你不确定的事实时，先 web_search 再 read_page 阅读最相关的 1–3 个结果，基于读到的内容回答，并用 Markdown 链接 [标题](网址) 标注来源。",
     "image": "- 画图用 generate_image：用户给了现成提示词就原样使用，否则写出具体详细的提示词（主体、场景、构图、光线、风格）；图片会自动展示给用户，不要在回答里贴图片地址。\n- 以附图或作品库里的图为基础复刻、改图时设置 reference_index 或 reference_file，并按改动大小设置 strength：这个模型会牢牢保留底图的构图和光线，换场景、时间、风格等大改动用 0.05–0.15，中等改动 0.2–0.4，只做微调才用 0.5 以上；改动特别大时也可以不用底图。",
-    "files": "- 文件工具只能访问工作目录 {workspace}。处理文件前先了解现状：find_files 按文件名找、search_files 按内容搜、list_dir 看目录、read_file 读内容；新文件用 write_file，修改用 edit_file（old_text 必须与原文完全一致）。写入前用户会审批，被拒绝就换个做法或询问用户。\n- 改代码前先弄清相关代码和约定，不要凭猜测修改；改动保持最小、贴合现有风格；改完运行测试、构建或相关命令验证，最后简要说明改了什么、怎么验证的。",
-    "exec": "- run_command 在工作目录 {workspace} 用 zsh 运行命令（脚本、测试、命令行工具等），运行前用户会审批；命令要能直接执行、尽量非交互，长时间任务设置合适的 timeout。",
+    "files": "- 文件工具只能访问工作目录 {workspace}。处理文件前先了解现状：find_files 按文件名找、search_files 按内容搜、list_dir 看目录、read_file 读内容；新文件用 write_file，改一处用 edit_file（old_text 从 read_file 的结果里照抄，带几行上下文），改多处或多个文件用 apply_patch。写入前用户会审批，被拒绝就换个做法或询问用户。\n- 改代码前先弄清相关代码和约定，不要凭猜测修改；从根源解决问题，改动保持最小、贴合现有风格，不顺手修无关的问题。写入成功后不必再读一遍确认（失败时工具会报错）。\n- 改完运行测试、构建或相关命令验证，最后简要说明改了什么、怎么验证的。不要撤销不是你做的改动，不要执行 git reset --hard 这类破坏性命令，除非用户明确要求。",
+    "exec": "- run_command 在工作目录 {workspace} 用 zsh 运行命令（脚本、测试、构建、git、命令行工具等），可用 workdir 指定子目录，运行前用户会审批；命令要非交互、能直接执行，长时间任务设置合适的 timeout。用户的简单请求能用一条命令完成时（比如查时间、看 git 状态），直接运行。\n- 看结果先看退出码：非 0 说明失败，读输出里的错误，修正后重新运行。",
     "mcp": "- 名字以 mcp__ 开头的工具来自用户接入的 MCP 服务，按工具说明传参；调用前用户会审批（除非已设为自动批准）。",
     "agents": "- 可以独立完成、需要大量搜索或阅读的子任务，用 delegate_task 交给子 agent：它在独立的上下文里工作，只把结果报告给你，能让你的上下文保持简洁。任务描述要完整具体（目标、范围、期望的产出），子 agent 看不到这段对话，但和你用同样的工具。它的报告里说没能确认的内容，不要当作事实转述。",
 }
@@ -84,7 +86,11 @@ def system_prompt(groups: set[str], workspace: Path, goal: dict | None = None) -
         progress = f"\n\n之前的进度：\n{goal['progress']}" if goal.get("progress") else ""
         rules += GOAL_RULES.format(goal=goal["text"], progress=progress)
     text = store.settings()["instructions"].strip()
-    instructions = f"\n\n用户的全局指令（AGENTS.md），务必遵守：\n{text}" if text else ""
+    instructions = f"\n\n用户的全局指令，务必遵守：\n{text}" if text else ""
+    # Like Codex, the workspace's own AGENTS.md describes the project (conventions, commands, checks).
+    project = workspace / "AGENTS.md"
+    if "files" in groups and project.is_file():
+        instructions += f"\n\n工作目录里的 AGENTS.md（项目说明，务必遵守）：\n{project.read_text(errors='replace')[:PROJECT_DOC_CHARS]}"
     items = store.memories()
     memory = ("\n\n关于用户的长期记忆（过时或错误时用 forget 删除）：\n" + "\n".join(f"- [{m['id']}] {m['text']}" for m in items)) if items else ""
     return SYSTEM.format(now=datetime.now().strftime("%Y-%m-%d %H:%M"), rules=rules, instructions=instructions, memory=memory)
@@ -546,7 +552,8 @@ class Agent:
         ctx = _Context(self, run, card, scope)
         try:
             if tool is None:
-                raise ToolError(f"工具 {name} 在这段对话里没有开启" if name in TOOLS else f"没有叫 {name} 的工具")
+                raise ToolError(unknown_tool(name, list(scope.tools)))
+            args = card["args"] = check_args(tool, args)
             signature = name + json.dumps(args, sort_keys=True, ensure_ascii=False)
             count = run.call_counts[signature] = run.call_counts.get(signature, 0) + 1
             if count > MAX_REPEATS and name != "update_plan":

@@ -9,6 +9,7 @@ import {
   Flag,
   ChevronDown,
   Download,
+  FileDiff,
   FilePen,
   FilePlus,
   FileSearch,
@@ -162,10 +163,30 @@ function describe(tool: ToolEvent, job: Job | null): { icon: typeof Search; titl
           </Pre>
         ),
       };
+    case "apply_patch": {
+      const files = String(a.patch ?? "").match(/^\*\*\* (Add|Update|Delete) File: .+$/gm) ?? [];
+      return {
+        icon: FileDiff,
+        title: files.length === 1 ? `修改 ${files[0].replace(/^\*\*\* \w+ File: /, "")}` : `应用补丁 · ${files.length} 个文件`,
+        detail: tool.output ? clip(tool.output.replace(/\n/g, " · "), 60) : "",
+        body: (
+          <Pre>
+            {String(a.patch ?? "")
+              .split("\n")
+              .map((line, i) => (
+                <span key={i} className={line.startsWith("+") ? "text-[var(--ok)]" : line.startsWith("-") ? "text-[var(--danger)]" : line.startsWith("***") || line.startsWith("@@") ? "ink-soft" : ""}>
+                  {line}
+                  {"\n"}
+                </span>
+              ))}
+          </Pre>
+        ),
+      };
+    }
     case "run_command":
       return {
         icon: Terminal,
-        title: `运行 ${clip(a.command, 50)}`,
+        title: `运行 ${clip(a.command, 50)}${a.workdir && a.workdir !== "." ? ` · ${String(a.workdir)}` : ""}`,
         detail: tool.stopped ? tool.stopped : tool.exit_code !== undefined && tool.exit_code !== null ? `退出码 ${tool.exit_code} · ${tool.seconds} 秒` : "",
         body: (
           <Pre>

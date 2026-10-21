@@ -8,12 +8,13 @@ The app is a native macOS window (pywebview) around a local FastAPI backend and 
 
 ## What it does
 
-- **Agents**: presets with their own instructions, starting tools and model. Four are built in (general,
-  coding, research, image); add your own in Settings → Agents.
-- **Tools**, switched on per chat, with approval before anything that writes or runs:
+- **One general agent** with global switches for its tools, global instructions, and the workspace's own
+  `AGENTS.md` read as project instructions (as in Codex).
+- **Tools**, with approval before anything that writes or runs:
   - web search (DuckDuckGo) and page reading
   - image generation and image-to-image (Qwen-Image 2.1 via [mflux](https://github.com/filipstrand/mflux))
-  - files in a workspace folder: find, search contents, read, write, edit
+  - files in a workspace folder: find, search contents, read, write, edit (tolerant of whitespace slips), and
+    multi-file patches in Codex's `apply_patch` format
   - shell commands in the workspace (zsh, with timeouts)
   - [MCP](https://modelcontextprotocol.io) servers, local (stdio) or remote (streamable HTTP)
   - sub-agents: hand a self-contained task to an agent that works in a fresh context and reports back

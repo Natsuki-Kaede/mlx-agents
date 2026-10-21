@@ -5,6 +5,7 @@ Handlers take (ctx, args) and return (text the model sees, fields added to the t
 for failures the model should hear about. File and command tools are confined to the agent's workspace.
 """
 
+import difflib
 import fnmatch
 import ipaddress
 import json
@@ -25,7 +26,7 @@ import trafilatura
 from ddgs import DDGS
 from PIL import Image
 
-from backend import store
+from backend import patch, store
 from backend.engine import Cancelled
 
 SEARCH_RESULTS = 6
@@ -361,29 +362,60 @@ def _write_file(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     return f"已{'覆盖' if existed else '新建'} {_rel(ctx, target)}（{len(content)} 字符）", {"path": _rel(ctx, target), "chars": len(content)}
 
 
-def _edit_target(ctx: ToolContext, args: dict) -> tuple[Path, str, str, str, int]:
+def _edit_target(ctx: ToolContext, args: dict) -> tuple[Path, str, int, bool]:
+    """The file and its new text. old_text that is not found verbatim is located line by line while ignoring
+    whitespace differences (as Codex does), which small models often get slightly wrong."""
     target = _in_workspace(ctx, _str(args, "path"))
     if not target.is_file():
         raise ToolError(f"文件不存在：{_rel(ctx, target)}")
     old, new = _str(args, "old_text"), _str(args, "new_text", required=False)
     text = target.read_text()
     count = text.count(old)
-    if count == 0:
-        raise ToolError("没有找到要替换的原文，请先 read_file 确认内容")
     if count > 1 and not args.get("replace_all"):
-        raise ToolError(f"原文出现了 {count} 次，请提供更长、唯一的片段，或设置 replace_all")
-    return target, text, old, new, count
+        raise ToolError(f"原文出现了 {count} 次，请提供更长、唯一的片段（多带几行上下文），或设置 replace_all")
+    if count:
+        return target, text.replace(old, new) if args.get("replace_all") else text.replace(old, new, 1), count, False
+    lines, pattern = text.split("\n"), old.strip("\n").split("\n")
+    at = patch.seek(lines, pattern)
+    if at is None:
+        near = patch.nearest(lines, pattern)
+        hint = f"文件里最接近的是：\n{near}\n请照实际内容重写 old_text。" if near else "请先 read_file 确认内容。"
+        raise ToolError(f"在 {_rel(ctx, target)} 里没有找到要替换的原文。{hint}")
+    if patch.seek(lines, pattern, at + 1) is not None:
+        raise ToolError("原文（忽略空白差异后）出现了不止一次，请多带几行上下文让它唯一")
+    lines[at : at + len(pattern)] = new.strip("\n").split("\n") if new.strip("\n") else []
+    return target, "\n".join(lines), 1, True
 
 
 def _edit_preview(ctx: ToolContext, args: dict) -> dict:
-    target, _, old, new, count = _edit_target(ctx, args)
-    return {"summary": f"修改 {_rel(ctx, target)}（替换 {count} 处）", "detail": f"- {old[:1500]}\n+ {new[:1500]}"}
+    target, _, count, _ = _edit_target(ctx, args)
+    return {"summary": f"修改 {_rel(ctx, target)}（替换 {count} 处）", "detail": f"- {_str(args, 'old_text')[:1500]}\n+ {_str(args, 'new_text', required=False)[:1500]}"}
 
 
 def _edit_file(ctx: ToolContext, args: dict) -> tuple[str, dict]:
-    target, text, old, new, count = _edit_target(ctx, args)
-    target.write_text(text.replace(old, new) if args.get("replace_all") else text.replace(old, new, 1))
-    return f"已修改 {_rel(ctx, target)}（替换 {count if args.get('replace_all') else 1} 处）", {"path": _rel(ctx, target)}
+    target, text, count, loose = _edit_target(ctx, args)
+    target.write_text(text)
+    note = "（原文与文件有空白差异，已按行匹配替换）" if loose else ""
+    return f"已修改 {_rel(ctx, target)}（替换 {count} 处）{note}", {"path": _rel(ctx, target)}
+
+
+def _patch_changes(ctx: ToolContext, args: dict, write: bool) -> list[tuple[str, str]]:
+    try:
+        return patch.apply(_str(args, "patch"), lambda path: _in_workspace(ctx, path), write=write)
+    except patch.PatchError as exc:
+        raise ToolError(f"补丁没有应用：{exc}") from exc
+
+
+def _patch_preview(ctx: ToolContext, args: dict) -> dict:
+    changes = _patch_changes(ctx, args, write=False)  # a patch that does not apply fails here, before asking the user
+    words = {"A": "新建", "M": "修改", "D": "删除"}
+    return {"summary": "应用补丁：" + "、".join(f"{words[a]} {p}" for a, p in changes), "detail": _str(args, "patch")[:4000]}
+
+
+def _apply_patch(ctx: ToolContext, args: dict) -> tuple[str, dict]:
+    changes = _patch_changes(ctx, args, write=True)
+    listing = "\n".join(f"{a} {p}" for a, p in changes)
+    return f"补丁已应用：\n{listing}", {"path": changes[0][1], "count": len(changes), "output": listing}
 
 
 # ----- commands -----
@@ -396,9 +428,12 @@ def _command_preview(ctx: ToolContext, args: dict) -> dict:
 def _run_command(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     command = _str(args, "command")
     timeout = min(MAX_COMMAND_TIMEOUT, max(1, int(args.get("timeout") or COMMAND_TIMEOUT)))
+    cwd = _in_workspace(ctx, _str(args, "workdir", required=False) or ".")
+    if not cwd.is_dir():
+        raise ToolError(f"workdir 不是目录：{_rel(ctx, cwd)}")
     started = time.time()
     proc = subprocess.Popen(
-        ["/bin/zsh", "-c", command], cwd=ctx.workspace, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        ["/bin/zsh", "-c", command], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL, start_new_session=True,
     )
     output = bytearray()
@@ -420,13 +455,24 @@ def _run_command(ctx: ToolContext, args: dict) -> tuple[str, dict]:
             proc.wait()
             break
         time.sleep(0.1)
-    text = output.decode("utf-8", "replace")
-    if len(text) > COMMAND_OUTPUT_CHARS:
-        half = COMMAND_OUTPUT_CHARS // 2
-        text = f"{text[:half]}\n…（中间省略 {len(text) - COMMAND_OUTPUT_CHARS} 字符）…\n{text[-half:]}"
+    full = output.decode("utf-8", "replace")
+    text = _head_tail(full)
     seconds = round(time.time() - started, 1)
-    status = reason or f"退出码 {proc.returncode}"
-    return f"{status}，用时 {seconds} 秒。输出：\n{text or '（无输出）'}", {"exit_code": proc.returncode, "output": text[-3000:], "seconds": seconds, "stopped": reason}
+    # Laid out like Codex's exec output: exit status and time first, so a failure is seen before the output.
+    head = [f"退出码：{proc.returncode}" + (f"（{reason}，已终止）" if reason else ""), f"用时：{seconds} 秒"]
+    if text != full:
+        head.append(f"输出共 {full.count(chr(10)) + 1} 行，只保留了开头和结尾")
+    body = "\n".join(head) + f"\n输出：\n{text or '（无输出）'}"
+    return body, {"exit_code": proc.returncode, "output": text[-3000:], "seconds": seconds, "stopped": reason}
+
+
+def _head_tail(text: str, limit: int = COMMAND_OUTPUT_CHARS) -> str:
+    """Long output keeps its start and end (where commands print what they are doing and how it ended)."""
+    if len(text) <= limit:
+        return text
+    head, tail = text[: limit // 2], text[-limit // 2 :]
+    head, tail = head[: head.rfind("\n") + 1 or None], tail[tail.find("\n") + 1 :]  # whole lines only
+    return f"{head}…（中间省略 {len(text) - len(head) - len(tail)} 字符）…\n{tail}"
 
 
 # ----- core: plan, memory, history -----
@@ -489,6 +535,19 @@ def _search_chats(ctx: ToolContext, args: dict) -> tuple[str, dict]:
     return text, {"results": [{"title": h["title"], "url": "", "snippet": h["snippet"]} for h in hits]}
 
 
+PATCH_DESCRIPTION = """Edit files with a patch (the user approves it first): change several places or files at once, add, delete or move files. Read the files first. Format:
+*** Begin Patch
+*** Update File: path/to/file.py
+@@ def existing_function():
+ unchanged line (space prefix: context, copied from the file)
+-line to remove
++line to add
+*** Add File: path/to/new.txt
++every line of a new file starts with +
+*** Delete File: path/to/old.txt
+*** End Patch
+Each change needs about 3 unchanged context lines around it; "@@ <line>" names a line just above the change to locate it. Paths are relative to the workspace."""
+
 TOOLS: dict[str, Tool] = {
     t.name: t
     for t in [
@@ -549,11 +608,23 @@ TOOLS: dict[str, Tool] = {
              _search_files),
         Tool("write_file", "files", "Create or overwrite a text file in the workspace (the user approves it first).",
              _params({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]), _write_file, approval="write", preview=_write_preview),
-        Tool("edit_file", "files", "Replace an exact snippet in a workspace file (the user approves it first). Read the file first; old_text must match exactly and be unique unless replace_all.",
-             _params({"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}, "replace_all": {"type": "boolean"}}, ["path", "old_text", "new_text"]),
+        Tool("edit_file", "files", "Replace one snippet in a workspace file (the user approves it first). Read the file first; copy old_text from it with a few lines of context so it is unique (whitespace differences are tolerated). For several changes or files at once use apply_patch.",
+             _params({
+                 "path": {"type": "string"},
+                 "old_text": {"type": "string", "description": "The current text to replace, copied from the file"},
+                 "new_text": {"type": "string", "description": "The replacement text"},
+                 "replace_all": {"type": "boolean", "description": "Replace every exact occurrence"},
+             }, ["path", "old_text", "new_text"]),
              _edit_file, approval="write", preview=_edit_preview),
-        Tool("run_command", "exec", "Run a shell command (zsh) in the workspace directory and return its output (the user approves it first). Use for running scripts, tests, package tools, file conversions.",
-             _params({"command": {"type": "string"}, "timeout": {"type": "integer", "description": f"Seconds, default {COMMAND_TIMEOUT}, max {MAX_COMMAND_TIMEOUT}"}}, ["command"]),
+        Tool("apply_patch", "files", PATCH_DESCRIPTION,
+             _params({"patch": {"type": "string", "description": "The whole patch, from *** Begin Patch to *** End Patch"}}, ["patch"]),
+             _apply_patch, approval="write", preview=_patch_preview),
+        Tool("run_command", "exec", "Run a shell command (zsh) and return its exit code and output (the user approves it first). Use for running scripts, tests, builds, git, package tools and file conversions. Commands must not wait for input.",
+             _params({
+                 "command": {"type": "string"},
+                 "workdir": {"type": "string", "description": "Folder to run in, relative to the workspace, default ."},
+                 "timeout": {"type": "integer", "description": f"Seconds, default {COMMAND_TIMEOUT}, max {MAX_COMMAND_TIMEOUT}"},
+             }, ["command"]),
              _run_command, approval="exec", preview=_command_preview),
     ]
 }
@@ -562,3 +633,56 @@ TOOLS: dict[str, Tool] = {
 def available(groups: set[str]) -> list[Tool]:
     """Tools offered to the model for a chat with these switches on (core tools always)."""
     return [t for t in TOOLS.values() if t.group == "core" or t.group in groups]
+
+
+# Names models trained on other agents tend to call, and the tool to use instead.
+TOOL_HINTS = {
+    "shell": "run_command", "bash": "run_command", "exec": "run_command", "exec_command": "run_command", "terminal": "run_command",
+    "read": "read_file", "cat": "read_file", "view": "read_file", "ls": "list_dir", "list_files": "list_dir",
+    "grep": "search_files", "rg": "search_files", "grep_files": "search_files", "glob": "find_files",
+    "write": "write_file", "create_file": "write_file", "edit": "edit_file", "str_replace": "edit_file", "replace": "edit_file",
+    "applypatch": "apply_patch", "apply-patch": "apply_patch", "patch": "apply_patch",
+}
+
+
+def unknown_tool(name: str, offered: list[str]) -> str:
+    """The error for a call to a tool that is not offered, pointing at the one the model probably meant."""
+    if name in TOOLS:
+        return f"工具 {name} 在这段对话里没有开启"
+    guess = TOOL_HINTS.get(name.lower())
+    guesses = [guess] if guess in offered else difflib.get_close_matches(name, offered, n=2, cutoff=0.6)
+    hint = f"你要的可能是 {' 或 '.join(guesses)}。" if guesses else ""
+    return f"没有叫 {name} 的工具。{hint}可用的工具：{', '.join(offered)}"
+
+
+EMPTY_OK = {"content", "new_text"}  # an empty file or deleting a snippet is a legitimate request
+
+
+def check_args(tool: Tool, args: dict) -> dict:
+    """Arguments fitted to the tool's schema: values in the wrong JSON type are converted when the meaning is clear
+    ("20" for an integer, a list sent as a JSON string), and missing required ones are reported with the expected
+    parameters, so the model can correct the call."""
+    props = tool.parameters.get("properties", {})
+    out = dict(args)
+    for key, value in args.items():
+        kind = props.get(key, {}).get("type")
+        try:
+            if kind == "integer" and isinstance(value, (str, float)) and not isinstance(value, bool):
+                out[key] = int(float(value))
+            elif kind == "number" and isinstance(value, str):
+                out[key] = float(value)
+            elif kind == "boolean" and isinstance(value, str) and value.lower() in ("true", "false"):
+                out[key] = value.lower() == "true"
+            elif kind in ("array", "object") and isinstance(value, str) and value.strip()[:1] in "[{":
+                out[key] = json.loads(value)
+            elif kind == "string" and isinstance(value, (int, float)) and not isinstance(value, bool):
+                out[key] = str(value)
+        except (ValueError, json.JSONDecodeError):
+            raise ToolError(f"参数 {key} 应为 {kind}，收到的是 {value!r}") from None
+    required = tool.parameters.get("required", [])
+    missing = [k for k in required if out.get(k) is None or (out[k] == "" and k not in EMPTY_OK)]
+    if missing:
+        expected = ", ".join(f"{k}{'（必填）' if k in required else ''}" for k in props)
+        extra = [k for k in args if k not in props]
+        raise ToolError(f"缺少参数 {', '.join(missing)}。{tool.name} 的参数是：{expected}" + (f"；不认识的参数：{', '.join(extra)}" if extra else ""))
+    return out
