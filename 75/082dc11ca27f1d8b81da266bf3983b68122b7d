@@ -1,0 +1,28 @@
+backend/agent.py
+  s_3f34af772b621d::t_1943a591e6211d 340-341
+ui/src/components/ToolsMenu.tsx
+  s_3f34af772b621d::t_4beb9bafa17bbd 1
+tests/test_agent.py
+  s_3f34af772b621d::t_62926f2ca261c7 74
+backend/store.py
+  s_3f34af772b621d::t_1943a591e6211d 107
+  s_3f34af772b621d::t_ee41d78da72f38 125
+ui/src/api.ts
+  s_3f34af772b621d::t_80cf2fd2bb7274 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "75082dc11ca27f1d8b81da266bf3983b68122b7d",
+  "prompts": {},
+  "sessions": {
+    "s_3f34af772b621d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8da5055c-fa29-44b2-89cc-86da292dd2b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
