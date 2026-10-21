@@ -1,0 +1,46 @@
+ui/src/index.css
+  s_3f34af772b621d::t_5f1be4cad7e6a4 27,302-303,305-325
+ui/src/App.tsx
+  s_3f34af772b621d::t_c16351f0ca3c3c 1-2,151,154
+  s_3f34af772b621d::t_efd9620684f327 4
+  s_3f34af772b621d::t_9053705e0fbe7e 85,88,90,124,175-177
+  s_3f34af772b621d::t_1f7f6aaf57ef48 180
+desktop/native.py
+  s_3f34af772b621d::t_efd9620684f327 157
+ui/src/pages/Chat.tsx
+  s_3f34af772b621d::t_ef5ff4ee11d0bc 101-102,128,178,358,360,386
+  s_3f34af772b621d::t_50cc6ac80859ea 26
+  s_3f34af772b621d::t_78941d70c3f6f9 387,389,398,404,406,466,469,473,476,480
+ui/src/components/SettingsDialog.tsx
+  s_3f34af772b621d::t_efd9620684f327 8,22,38-39,42,51-53
+ui/src/pages/Gallery.tsx
+  s_3f34af772b621d::t_50cc6ac80859ea 33,36,38,42,48,51
+  s_3f34af772b621d::t_68dfbbfc26d0d1 5
+ui/src/components/MenuPanel.tsx
+  s_3f34af772b621d::t_efd9620684f327 49,52-53,56
+ui/src/components/ui.tsx
+  s_3f34af772b621d::t_9053705e0fbe7e 145
+  s_3f34af772b621d::t_5f1be4cad7e6a4 3,7-28,123-124,130,132,155-156,159
+ui/src/components/ThinkingBlock.tsx
+  s_3f34af772b621d::t_efd9620684f327 27-32,35
+ui/src/native.ts
+  s_3f34af772b621d::t_efd9620684f327 4
+ui/src/components/ToolTimeline.tsx
+  s_3f34af772b621d::t_efd9620684f327 327-328,354-359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9537f5c04961c42721ffa4be688f314a0098db32",
+  "prompts": {},
+  "sessions": {
+    "s_3f34af772b621d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8da5055c-fa29-44b2-89cc-86da292dd2b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
