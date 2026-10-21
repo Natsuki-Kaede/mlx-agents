@@ -24,6 +24,7 @@
   --blob-4: #ffd28c;
   --header-h: 60px;
   --header-inset: 0px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: light;
 }
 
@@ -298,4 +299,27 @@ input[type="range"].slider::-webkit-slider-thumb {
 
 @media (prefers-reduced-motion: reduce) {
   .ambient .blob, .shimmer { animation: none; }
+  .anim-fade, .anim-rise, .anim-pop, .anim-pop-out, .anim-fade-out { animation: none; }
+  .reveal, .slide-pill { transition: none; }
 }
+
+/* ---------- motion ----------
+   Entrances, exits, reveals and sliding pills are CSS animations and transitions: they run on the compositor,
+   and unlike frame-driven animations they finish on their own once WebKit shows a page it had considered
+   hidden. Exits are timed (usePresence), so content never waits on an animation to go away. */
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
+@keyframes pop-out { to { opacity: 0; transform: translateY(6px) scale(0.98); } }
+.anim-fade { animation: fade-in 0.24s var(--ease-out) both; }
+.anim-rise { animation: rise-in 0.38s var(--ease-out) both; }
+.anim-pop { animation: pop-in 0.28s var(--ease-out) both; }
+.anim-fade-out { animation: fade-out 0.16s ease-in both; pointer-events: none; }
+.anim-pop-out { animation: pop-out 0.16s ease-in both; pointer-events: none; }
+/* Height reveal: the body stays mounted and its row grows from 0 to its natural height. */
+.reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.32s var(--ease-out), opacity 0.24s var(--ease-out); }
+.reveal.open { grid-template-rows: 1fr; opacity: 1; }
+.reveal > * { min-height: 0; overflow: hidden; }
+/* The highlight behind the selected option of a segmented control, sliding between equal-width options. */
+.slide-pill { transition: transform 0.38s var(--ease-out); }

@@ -1,7 +1,7 @@
 /** The desktop client's native window (desktop/native.py), when the page runs inside it. */
 type NativeApi = {
   set_drag_regions: (height: number, controls: number[][]) => Promise<void>;
-  ui_state: (state: { theme?: string; calm?: boolean; auto?: boolean }) => Promise<void>;
+  ui_state: (state: { theme?: string; auto?: boolean }) => Promise<void>;
 };
 
 const nativeApi = () => (window as unknown as { pywebview?: { api?: Partial<NativeApi> } }).pywebview?.api;

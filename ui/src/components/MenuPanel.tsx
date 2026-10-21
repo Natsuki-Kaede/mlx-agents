@@ -1,7 +1,5 @@
-import { motion } from "motion/react";
 import { useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { spring } from "./ui";
 
 type Place = { left: number; bottom: number; maxHeight: number; width: number };
 
@@ -48,17 +46,14 @@ export function MenuPanel({
 
   if (!place) return null;
   return createPortal(
-    <motion.div
+    <div
       ref={panelRef}
       role="menu"
-      initial={{ y: 8, scale: 0.96 }}
-      animate={{ y: 0, scale: 1 }}
-      transition={spring}
-      style={{ position: "fixed", ...place, originX: 0, originY: 1 }}
-      className={`glass glass-solid scroll-soft z-50 overflow-y-auto rounded-2xl ${className}`}
+      style={{ position: "fixed", ...place, transformOrigin: "0 100%" }}
+      className={`anim-pop glass glass-solid scroll-soft z-50 overflow-y-auto rounded-2xl ${className}`}
     >
       {children}
-    </motion.div>,
+    </div>,
     document.body,
   );
 }

@@ -1,9 +1,8 @@
-import { motion } from "motion/react";
 import { Copy, Download, RefreshCw, Repeat2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { FIELD_LABELS, api, type OutputMeta } from "../api";
-import { Button, ErrorNote, Glass, spring } from "../components/ui";
+import { Button, ErrorNote, Glass } from "../components/ui";
 
 export function GalleryPage({ active, onReuse }: { active: boolean; onReuse: (meta: OutputMeta) => void }) {
   const [items, setItems] = useState<OutputMeta[] | null>(null);
@@ -31,31 +30,25 @@ export function GalleryPage({ active, onReuse }: { active: boolean; onReuse: (me
       <ErrorNote error={error} />
       <div className="masonry">
         {items?.map((item, i) => (
-          <motion.button
+          <button
             key={item.file}
             type="button"
-            initial={{ y: 16 }}
-            animate={{ y: 0 }}
-            transition={{ ...spring, delay: Math.min(i, 12) * 0.035 }}
-            whileHover={{ y: -4 }}
+            style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
             onClick={() => setOpen(item)}
-            className="glass mb-4 block w-full break-inside-avoid overflow-hidden rounded-3xl p-1.5 text-left"
+            className="anim-rise glass mb-4 block w-full break-inside-avoid overflow-hidden rounded-3xl p-1.5 text-left transition-[translate] duration-300 [transition-timing-function:var(--ease-out)] hover:-translate-y-1"
           >
             <img src={item.url} loading="lazy" className="w-full rounded-[20px]" alt="" />
             {item.prompt && <div className="ink-soft line-clamp-2 px-2 pt-2 pb-1 text-xs leading-relaxed">{item.prompt}</div>}
-          </motion.button>
+          </button>
         ))}
       </div>
 
       {createPortal(
         open && (
-          <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4 backdrop-blur-sm" onClick={() => setOpen(null)}>
+          <div className="anim-fade fixed inset-0 z-50 grid place-items-center bg-black/35 p-4 backdrop-blur-sm" onClick={() => setOpen(null)}>
             <Glass
-              initial={{ y: 16, scale: 0.97 }}
-              animate={{ y: 0, scale: 1 }}
-              transition={spring}
               onClick={(e) => e.stopPropagation()}
-              className="glass-solid grid max-h-[92dvh] w-full max-w-6xl gap-5 overflow-hidden p-4 md:grid-cols-[1.3fr_1fr]"
+              className="anim-pop glass-solid grid max-h-[92dvh] w-full max-w-6xl gap-5 overflow-hidden p-4 md:grid-cols-[1.3fr_1fr]"
             >
               <img src={open.url} className="max-h-[84dvh] w-full rounded-2xl object-contain" alt="" />
               <div className="scroll-soft flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">

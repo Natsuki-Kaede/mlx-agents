@@ -154,7 +154,7 @@ class NativeShell:
         self._menu(bar, "显示", [
             ("对话", "tab-chat", "1"), ("作品库", "tab-gallery", "2"), None,
             ("外观", [("跟随系统", "theme:system", ""), ("浅色", "theme:light", ""), ("深色", "theme:dark", "")]),
-            ("减少动效", "calm:toggle", ""), None,
+            None,
             ("进入全屏幕", "toggleFullScreen:", "⌃f"),
         ], app)
         self._menu(bar, "对话", [("停止任务", "stop", "."), None, ("自动批准", "auto:toggle", "")], app)

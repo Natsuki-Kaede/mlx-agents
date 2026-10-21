@@ -24,13 +24,15 @@ export function ThinkingBlock({ text, tokens, active }: { text: string; tokens?:
           <ChevronDown className="size-3.5" />
         </motion.span>
       </button>
-      {open && (
-        <div ref={ref} className="scroll-soft mt-2 max-h-72 overflow-y-auto border-l-2 border-[var(--glass-edge)] pl-3 text-[13px]">
-          <div ref={contentRef}>
-            <Markdown text={text} streaming={active} className="ink-soft" />
+      <div className={`reveal ${open ? "open" : ""}`}>
+        <div>
+          <div ref={ref} className="scroll-soft mt-2 max-h-72 overflow-y-auto border-l-2 border-[var(--glass-edge)] pl-3 text-[13px]">
+            <div ref={contentRef}>
+              <Markdown text={text} streaming={active} className="ink-soft" />
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

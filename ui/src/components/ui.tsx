@@ -1,8 +1,30 @@
 import { motion, type HTMLMotionProps } from "motion/react";
 import { Loader2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export const spring = { type: "spring", stiffness: 380, damping: 32, mass: 0.8 } as const;
+
+/** Keeps something mounted for its exit animation after `open` turns false; `leaving` is true meanwhile. */
+export function usePresence(open: boolean, exitMs = 160) {
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => {
+    if (open) return setMounted(true);
+    const timer = setTimeout(() => setMounted(false), exitMs);
+    return () => clearTimeout(timer);
+  }, [open, exitMs]);
+  return { mounted: open || mounted, leaving: !open && mounted };
+}
+
+/** A highlight that slides under the selected one of `count` equal-width options laid out with a 4px gap. */
+export function SlidePill({ index, count, className = "" }: { index: number; count: number; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`slide-pill absolute top-1 bottom-1 left-1 ${className}`}
+      style={{ width: `calc((100% - 8px - ${(count - 1) * 4}px) / ${count})`, transform: `translateX(calc(${index} * (100% + 4px)))` }}
+    />
+  );
+}
 
 export function Glass({
   className = "",
@@ -32,7 +54,6 @@ export function Button({ variant = "glass", loading, icon, children, className =
     variant === "primary" ? "accent-fill" : variant === "glass" ? "glass rounded-2xl" : "hover:bg-[var(--glass-fill)]";
   return (
     <motion.button
-      whileHover={disabled ? undefined : { y: -1, scale: 1.015 }}
       whileTap={disabled ? undefined : { scale: 0.97 }}
       transition={spring}
       disabled={disabled || loading}
@@ -99,16 +120,16 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex gap-1 rounded-2xl bg-[var(--glass-fill)] p-1 shadow-[inset_0_1px_2px_rgb(0_0_0/0.08)]">
+    <div className="relative flex gap-1 rounded-2xl bg-[var(--glass-fill)] p-1 shadow-[inset_0_1px_2px_rgb(0_0_0/0.08)]">
+      <SlidePill index={options.findIndex((o) => o.value === value)} count={options.length} className="glass glass-strong rounded-xl" />
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className="relative flex-1 rounded-xl px-3 py-1.5 text-[13px] font-medium"
+          className={`relative flex-1 basis-0 rounded-xl px-3 py-1.5 text-[13px] font-medium transition-colors ${value === o.value ? "" : "ink-soft"}`}
         >
-          {value === o.value && <span className="glass glass-strong absolute inset-0 rounded-xl" />}
-          <span className={`relative ${value === o.value ? "" : "ink-soft"}`}>{o.label}</span>
+          {o.label}
         </button>
       ))}
     </div>
@@ -121,7 +142,7 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
       <span
         className={`relative h-6 w-10 rounded-full transition-colors ${checked ? "accent-fill" : "bg-[var(--glass-fill-strong)]"}`}
       >
-        <span className="absolute top-0.5 size-5 rounded-full bg-white shadow" style={{ left: checked ? 18 : 2 }} />
+        <span className="absolute top-0.5 size-5 rounded-full bg-white shadow transition-[left] duration-300 [transition-timing-function:var(--ease-out)]" style={{ left: checked ? 18 : 2 }} />
       </span>
       {label}
     </button>
@@ -131,12 +152,10 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
 export function ErrorNote({ error }: { error: string | null }) {
   if (!error) return null;
   return (
-    <motion.div
-      initial={{ y: -4 }}
-      animate={{ y: 0 }}
-      className="rounded-2xl border border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-3 text-sm"
+    <div
+      className="anim-rise rounded-2xl border border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-3 text-sm"
     >
       {error}
-    </motion.div>
+    </div>
   );
 }

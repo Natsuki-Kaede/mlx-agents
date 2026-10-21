@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import { ArrowDown, CircleHelp, ImageIcon, Loader2, MessageSquarePlus, MoreHorizontal, PauseCircle, ScanSearch, ShieldAlert, Target, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -24,7 +23,7 @@ import { ThinkingBlock } from "../components/ThinkingBlock";
 import { ToolTimeline } from "../components/ToolTimeline";
 import { usePersistentState } from "../components/usePersistentState";
 import { useStickToBottom } from "../components/useStickToBottom";
-import { Button, ErrorNote, Glass, spring } from "../components/ui";
+import { Button, ErrorNote, Glass } from "../components/ui";
 import { GoalCard } from "../components/GoalCard";
 import { COMMAND_PROMPTS, parseCommand } from "../components/slashCommands";
 import { onCommand, reportState } from "../native";
@@ -99,6 +98,8 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [goal, setGoal] = useState<Goal | null>(null);
+  // Messages from this index on arrived while the chat was open and rise in; loaded ones just fade in together.
+  const [shownFrom, setShownFrom] = useState(0);
   const settings = useAppSettings();
   const [showHistory, setShowHistory] = useState(false);
   const [models, setModels] = useState<ModelList | null>(null);
@@ -124,6 +125,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     const chat = await api.chat(id);
     if (chatIdRef.current !== id) return;
     setTurns(chat.turns);
+    setShownFrom(chat.turns.length);
     setGoal(chat.goal ?? null);
   }, []);
 
@@ -173,6 +175,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
       setShowHistory(false);
       if (!id) {
         setTurns([]);
+        setShownFrom(0);
         setGoal(null);
         return;
       }
@@ -352,9 +355,9 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
         {createPortal(
           showHistory && (
             <div className="fixed inset-0 z-50 bg-black/30 p-4 backdrop-blur-sm md:hidden" onClick={() => setShowHistory(false)}>
-              <motion.div initial={{ x: -24 }} animate={{ x: 0 }} className="h-full max-w-xs" onClick={(e) => e.stopPropagation()}>
+              <div className="anim-pop h-full max-w-xs" onClick={(e) => e.stopPropagation()}>
                 {sidebar}
-              </motion.div>
+              </div>
             </div>
           ),
           document.body,
@@ -380,9 +383,10 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
           )}
           <div className="relative min-h-0 flex-1">
             <div ref={list} className="scroll-soft h-full overflow-y-auto px-1">
-              <div ref={contentRef} className="min-h-full space-y-4 pb-2">
+              <div ref={contentRef} className="min-h-full pb-2">
+                <div key={chatId ?? "new"} className="anim-fade space-y-4">
                 {turns.length === 0 && (
-                  <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="grid min-h-[60dvh] place-items-center">
+                  <div className="anim-rise grid min-h-[60dvh] place-items-center">
                     <div className="max-w-md text-center">
                       <div className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] bg-clip-text text-3xl font-semibold text-transparent">
                         今天要做点什么？
@@ -391,18 +395,15 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
                         直接说需求：问问题、查资料、写代码、处理文件、画图。多步任务会先列计划再逐步执行；写文件、运行命令前会先请你批准。
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
                 {turns.map((turn, i) => {
                   const live = running && i === turns.length - 1 && turn.role === "assistant";
                   const idle = live && !turn.content && !turn.thinking && !turn.tools?.length && !turn.plan?.length;
                   return (
-                    <motion.div
+                    <div
                       key={`${chatId}-${i}`}
-                      initial={{ y: 14, scale: 0.98 }}
-                      animate={{ y: 0, scale: 1 }}
-                      transition={spring}
-                      className={`flex ${turn.role === "user" ? "justify-end" : "justify-start"}`}
+                      className={`flex ${turn.role === "user" ? "justify-end" : "justify-start"} ${i >= shownFrom ? "anim-rise" : ""}`}
                     >
                       <div className={`max-w-[85%] ${turn.role === "user" ? "items-end" : "w-full items-start"} flex flex-col gap-2`}>
                         {turn.role === "user" && turn.mode && turn.mode !== "chat" && (
@@ -462,23 +463,21 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
                           </div>
                         )}
                       </div>
-                    </motion.div>
+                    </div>
                   );
                 })}
+                </div>
               </div>
             </div>
             {!atBottom && turns.length > 0 && (
-              <motion.button
+              <button
                 type="button"
-                initial={{ y: 8, scale: 0.9 }}
-                animate={{ y: 0, scale: 1 }}
-                transition={spring}
                 onClick={() => scrollToBottom()}
-                className="glass glass-strong absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium"
+                className="anim-pop glass glass-strong absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium"
               >
                 <ArrowDown className="size-3.5" />
                 {running ? "跟随最新进展" : "回到底部"}
-              </motion.button>
+              </button>
             )}
           </div>
 

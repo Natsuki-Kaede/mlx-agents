@@ -324,11 +324,8 @@ function ToolCard({ tool, all }: { tool: ToolEvent; all: ToolEvent[] }) {
         : detail;
 
   return (
-    <motion.div
-      initial={{ y: 6 }}
-      animate={{ y: 0 }}
-      transition={spring}
-      className={`glass rounded-2xl px-3.5 py-2.5 ${waiting ? "ring-2 ring-[color-mix(in_srgb,var(--warn)_55%,transparent)]" : ""}`}
+    <div
+      className={`anim-rise glass rounded-2xl px-3.5 py-2.5 ${waiting ? "ring-2 ring-[color-mix(in_srgb,var(--warn)_55%,transparent)]" : ""}`}
     >
       <button type="button" disabled={!body} onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left text-xs">
         <Icon className="ink-soft size-3.5 shrink-0" />
@@ -354,8 +351,12 @@ function ToolCard({ tool, all }: { tool: ToolEvent; all: ToolEvent[] }) {
       )}
       {tool.name === "generate_image" && tool.status === "done" && <ImageActions tool={tool} />}
       {tool.name === "delegate_task" && <SubAgent tool={tool} all={all} />}
-      {open && body && !waiting && body}
-    </motion.div>
+      {body && !waiting && (
+        <div className={`reveal ${open ? "open" : ""}`}>
+          <div>{body}</div>
+        </div>
+      )}
+    </div>
   );
 }
 

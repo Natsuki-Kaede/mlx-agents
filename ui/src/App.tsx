@@ -1,6 +1,7 @@
-import { MotionConfig, motion } from "motion/react";
-import { Images, MessagesSquare, Moon, Settings, Sun, SunMoon, Wind } from "lucide-react";
+import { MotionConfig } from "motion/react";
+import { Images, MessagesSquare, Moon, Settings, Sun, SunMoon } from "lucide-react";
 import { Logo } from "./components/Logo";
+import { SlidePill } from "./components/ui";
 import { onCommand, reportState, watchDragRegions } from "./native";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type OutputMeta, type Status } from "./api";
@@ -81,16 +82,12 @@ function StatusPill({ status, offline }: { status: Status | null; offline: boole
   );
 }
 
+/** A tab's page; it stays mounted while hidden and rises in each time it is shown. */
 function Page({ active, children }: { active: boolean; children: ReactNode }) {
   return (
-    <motion.main
-      hidden={!active}
-      initial={false}
-      animate={{ y: active ? 0 : 14 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-    >
+    <main hidden={!active} className={active ? "anim-rise" : ""}>
       {children}
-    </motion.main>
+    </main>
   );
 }
 
@@ -98,7 +95,6 @@ export default function App() {
   // Older versions stored tabs that no longer exist; anything but the gallery opens the chat.
   const [tab, setTab] = useState<Tab>(() => (readPref<string>("tab", "chat") === "gallery" ? "gallery" : "chat"));
   const [theme, setTheme] = useState<Theme>(() => readPref<Theme>("theme", "system"));
-  const [calm, setCalm] = useState(() => readPref<string>("calm", "0") === "1");
   const [prefill, setPrefill] = useState<OutputMeta | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>();
@@ -125,7 +121,7 @@ export default function App() {
   // The desktop client's native window: header drag area, appearance and menu check marks, menu commands.
   const header = useRef<HTMLElement>(null);
   useEffect(() => (header.current ? watchDragRegions(header.current) : undefined), []);
-  useEffect(() => reportState({ theme, calm }), [theme, calm]);
+  useEffect(() => reportState({ theme }), [theme]);
   const commands = useRef<(command: string) => void>(() => undefined);
   commands.current = (command) => {
     const [name, value] = command.split(":");
@@ -137,9 +133,6 @@ export default function App() {
     else if (name === "theme") {
       setTheme(value as Theme);
       writePref("theme", value);
-    } else if (command === "calm:toggle") {
-      setCalm(!calm);
-      writePref("calm", calm ? "0" : "1");
     }
   };
   useEffect(() => onCommand((command) => commands.current(command)), []);
@@ -155,10 +148,10 @@ export default function App() {
   };
   const ThemeIcon = theme === "system" ? SunMoon : theme === "light" ? Sun : Moon;
   // The GPU is shared with the models, so the ambient animation pauses while anything is running.
-  const paused = calm || !!status?.busy;
+  const paused = !!status?.busy;
 
   return (
-    <MotionConfig reducedMotion={calm ? "always" : "user"}>
+    <MotionConfig reducedMotion="user">
       <svg width="0" height="0" className="absolute" aria-hidden>
         <filter id="liquid-refract" x="0" y="0" width="100%" height="100%">
           <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="7" result="noise" />
@@ -179,11 +172,12 @@ export default function App() {
         <header ref={header} className="header-veil sticky top-0 z-40 isolate flex min-h-[var(--header-h)] flex-wrap items-center gap-3 ps-[var(--header-inset)]">
           <Logo className="size-9 shrink-0 drop-shadow-[0_4px_12px_rgba(91,108,255,0.35)]" />
 
-          <nav className="glass glass-refract flex gap-1 rounded-full p-1">
+          {/* Equal-width tabs, so the highlight can slide between them. */}
+          <nav className="glass glass-refract relative inline-grid grid-cols-2 gap-1 rounded-full p-1">
+            <SlidePill index={TABS.findIndex((t) => t.id === tab)} count={TABS.length} className="accent-fill rounded-full" />
             {TABS.map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" onClick={() => go(id)} className="relative rounded-full px-3.5 py-2 text-sm font-medium sm:px-4">
-                {tab === id && <span className="accent-fill absolute inset-0 rounded-full" />}
-                <span className={`relative flex items-center gap-1.5 ${tab === id ? "text-white" : "ink-soft"}`}>
+                <span className={`relative flex items-center justify-center gap-1.5 transition-colors duration-300 ${tab === id ? "text-white" : "ink-soft"}`}>
                   <Icon className="size-4" />
                   <span className="hidden sm:inline">{label}</span>
                 </span>
@@ -193,17 +187,6 @@ export default function App() {
 
           <div className="ml-auto flex items-center gap-2">
             <StatusPill status={status} offline={offline} />
-            <button
-              type="button"
-              title={calm ? "已减少动效" : "减少动效"}
-              onClick={() => {
-                setCalm(!calm);
-                writePref("calm", calm ? "0" : "1");
-              }}
-              className={`glass grid size-9 place-items-center rounded-full ${calm ? "text-[var(--accent)]" : ""}`}
-            >
-              <Wind className="size-4" />
-            </button>
             <button type="button" title={`主题：${theme === "system" ? "跟随系统" : theme === "light" ? "浅色" : "深色"}`} onClick={cycleTheme} className="glass grid size-9 place-items-center rounded-full">
               <ThemeIcon className="size-4" />
             </button>
