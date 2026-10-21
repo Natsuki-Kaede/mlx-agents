@@ -1,0 +1,31 @@
+tests/test_downloads.py
+  s_269b95d29ae1c3::t_9c5211bfc007c3 1-80,82,85-107
+  s_269b95d29ae1c3::t_a7bd6dcbe07e43 81,83-84
+tests/test_tools.py
+  s_269b95d29ae1c3::t_83995de3cb3ca2 1-59
+pyproject.toml
+  s_269b95d29ae1c3::t_556e5752076bfa 37-41
+  s_269b95d29ae1c3::t_ccfc21a44e3561 42-45
+tests/conftest.py
+  s_269b95d29ae1c3::t_d2a5d7b8e24e60 1-106
+tests/test_agent.py
+  s_269b95d29ae1c3::t_e2e2fb025f699e 1-216
+uv.lock
+  s_269b95d29ae1c3::t_a382e4e364deca 456-464,733-737,759-761,967-975,1172-1186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8b0ef743430d8be174dd6b06776d6a691d12c42c",
+  "prompts": {},
+  "sessions": {
+    "s_269b95d29ae1c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "897aafbc-cc1d-426e-86a6-772d0edf3bd1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
