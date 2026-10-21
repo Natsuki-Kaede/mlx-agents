@@ -381,7 +381,7 @@ class SettingsPatch(BaseModel):
     image_model: str | None = None
     permissions: Permissions | None = None
     auto_approve: bool | None = None
-    reasoning: Literal["off", "low", "medium", "high"] | None = None
+    reasoning: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     params: GenParams | None = None
     instructions: str | None = Field(None, max_length=20000)
     goal_max_rounds: int | None = Field(None, ge=10, le=1000)

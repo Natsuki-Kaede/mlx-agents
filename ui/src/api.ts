@@ -22,7 +22,7 @@ export type ModelDownload = {
   note: string | null;
 };
 export type ModelList = { models: ModelInfo[]; default_chat: string | null; default_image: string | null; downloads: ModelDownload[] };
-export type Reasoning = "off" | "low" | "medium" | "high";
+export type Reasoning = "low" | "medium" | "high" | "xhigh" | "max";
 export type GenParams = { max_tokens: number; temperature: number; repetition_penalty: number; top_p: number; top_k: number };
 export type TokenCounts = { thinking: number; answer: number };
 export type VlmStats = {

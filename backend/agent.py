@@ -504,7 +504,7 @@ class Agent:
         if cut - anchor < 4:
             return
         transcript = "\n\n".join(_render(m) for m in convo[anchor:cut])[-30000:]
-        params = scope.params | {"reasoning": "off", "max_tokens": 900}
+        params = scope.params | {"reasoning": "low", "max_tokens": 900}
         prompt = [{"role": "system", "content": SUMMARY_SYSTEM}, {"role": "user", "content": transcript}]
         stats = self._generate(run, Scope(set(), {}, [], [], scope.workspace, params, scope.model, parent=scope.parent), prompt, None, None, None)
         summary = (stats or {}).get("text", "").strip()

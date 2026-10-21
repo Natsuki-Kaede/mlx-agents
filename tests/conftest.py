@@ -73,7 +73,7 @@ def request(chat_id="c1", content="做事", permissions=None, goal=None, **extra
     """A run request as main.start_run builds it."""
     return {
         "chat_id": chat_id, "content": content, "attachments": [], "model": None,
-        "params": {"reasoning": "off", "max_tokens": 256, "temperature": 0.7, "repetition_penalty": 1.0},
+        "params": {"reasoning": "low", "max_tokens": 256, "temperature": 0.7, "repetition_penalty": 1.0},
         "permissions": permissions or {"files": True, "exec": True}, "goal": goal,
         "goal_budget": extra.pop("goal_budget", {"rounds": 20, "minutes": 5}), **extra,
     }

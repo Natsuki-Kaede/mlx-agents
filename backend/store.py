@@ -106,13 +106,20 @@ DEFAULT_SETTINGS = {
     # The tool switches and the auto-approve mode apply to every chat and are remembered.
     "permissions": {"web": False, "image": True, "files": False, "exec": False, "mcp": False},
     "auto_approve": False,
-    "reasoning": "off",
+    "reasoning": "low",
+    "reasoning_scale": 2,  # REASONING_SCALE
     "params": {"max_tokens": 1024, "temperature": 0.7, "repetition_penalty": 1.1, "top_p": 0.95, "top_k": 20},
     "instructions": "",  # global instructions, like an AGENTS.md
     # Budget of one goal run (it pauses when either runs out; the user can continue it).
     "goal_max_rounds": 120,
     "goal_max_minutes": 60,
 }
+
+
+# Reasoning levels before the five-level scale (off, then 512, 2048 and 8192 thinking tokens), mapped to the nearest.
+# The names overlap, so saved settings record which scale they use and are mapped only once.
+LEGACY_REASONING = {"off": "low", "low": "medium", "medium": "high", "high": "xhigh"}
+REASONING_SCALE = 2
 
 
 def settings() -> dict:
@@ -123,6 +130,8 @@ def settings() -> dict:
     for key in ("permissions", "params"):
         merged[key] = DEFAULT_SETTINGS[key] | (saved.get(key) or {})
     merged["permissions"].pop("agents", None)  # sub-agents no longer have a switch
+    if "reasoning" in saved and saved.get("reasoning_scale") != REASONING_SCALE:
+        merged["reasoning"] = LEGACY_REASONING.get(saved["reasoning"], "low")
     return merged
 
 

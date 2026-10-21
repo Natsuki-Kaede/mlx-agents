@@ -51,9 +51,9 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = ROOT / "outputs"
 UPLOADS = ROOT / "uploads"
 PROMPT_CACHE_SIZE = 32
-# Thinking-token budget per reasoning level; None leaves thinking bounded only by UNBOUNDED_REASONING_TOKENS.
-REASONING_BUDGETS = {"low": 512, "medium": 2048, "high": None}
-UNBOUNDED_REASONING_TOKENS = 8192
+# Thinking-token budget per reasoning level; "low" answers without thinking. At 10-25 tokens/s on a 16 GB Mac,
+# max (32k) can mean half an hour of thinking.
+REASONING_BUDGETS = {"medium": 1024, "high": 4096, "xhigh": 8192, "max": 32768}
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
 VIDEO_FPS = 2.0  # frames sampled per second of an attached video, up to VIDEO_MAX_FRAMES
 VIDEO_MAX_FRAMES = 32
@@ -356,20 +356,19 @@ class Engine:
         model, processor = self._load(info)
         fmt = self._format
         load_seconds = time.time() - start
-        level = params.get("reasoning", "off")
-        reasoning = level != "off" and fmt.think_end is not None
+        budget = REASONING_BUDGETS.get(params.get("reasoning", "low"))
+        reasoning = budget is not None and fmt.think_end is not None
         tools = tools if tools and fmt.tool_start else None
         max_tokens = params["max_tokens"]
-        budget = REASONING_BUDGETS.get(level) if reasoning else None
         if reasoning:
             # max_tokens counts thinking tokens too, so the answer keeps its own allowance on top of the budget.
-            max_tokens += budget or UNBOUNDED_REASONING_TOKENS
+            max_tokens += budget
         if info.runtime == "mlx-vlm":
             template_kwargs = {"enable_thinking": reasoning} | ({"tools": tools} if tools else {})
             if videos:
                 template_kwargs.update(video=videos, fps=VIDEO_FPS)
             prompt = apply_chat_template(processor, model.config, messages, num_images=len(images), **template_kwargs)
-            extra = ({"enable_thinking": True} | ({"thinking_budget": budget} if budget else {})) if reasoning else {}
+            extra = {"enable_thinking": True, "thinking_budget": budget} if reasoning else {}
             generator = vlm_stream_generate(
                 model, processor, prompt, image=images or None, video=videos or None, max_tokens=max_tokens,
                 temperature=params["temperature"], top_p=params.get("top_p", 1.0), top_k=params.get("top_k", 0),
@@ -377,10 +376,13 @@ class Engine:
             )
         else:
             prompt = processor.apply_chat_template(messages, tools=tools, add_generation_prompt=True, tokenize=False, enable_thinking=reasoning)
+            processors = make_logits_processors(repetition_penalty=params["repetition_penalty"])
+            if reasoning:
+                processors.append(ThinkingBudget(processor, budget, opened=prompt.rstrip().endswith(fmt.think_start or "\0")))
             generator = lm_stream_generate(
                 model, processor, prompt, max_tokens=max_tokens,
                 sampler=make_sampler(temp=params["temperature"], top_p=params.get("top_p", 0.0), top_k=params.get("top_k", 0)),
-                logits_processors=make_logits_processors(repetition_penalty=params["repetition_penalty"]),
+                logits_processors=processors,
             )
         # Templates that pre-open the thinking block leave the prompt inside it.
         opened = bool(fmt.think_start and prompt.rstrip().endswith(fmt.think_start))
@@ -420,6 +422,35 @@ class Engine:
             "generation_tps": round(last.generation_tps, 1) if last else 0,
             "peak_mlx_gb": round(mx.get_peak_memory() / 1e9, 2),
         }
+
+
+class ThinkingBudget:
+    """mlx-lm logits processor that ends thinking once it reaches `budget` tokens by forcing a newline and the
+    end-of-thinking token, as mlx-vlm's thinking_budget does (mlx-lm has no such option)."""
+
+    def __init__(self, tokenizer, budget: int, opened: bool) -> None:
+        self.budget = budget
+        self.start_id, self.end_id = tokenizer.think_start_id, tokenizer.think_end_id
+        self.forced = [*tokenizer.encode("\n", add_special_tokens=False)[-1:], self.end_id]
+        self.thinking = opened  # the prompt already opened the thinking block
+        self.count = 0
+        self.calls = 0
+
+    def __call__(self, tokens: mx.array, logits: mx.array) -> mx.array:
+        self.calls += 1
+        if self.calls > 1:  # the first call sees only the prompt; later ones see the token just generated
+            last = tokens[-1].item()
+            if last == self.start_id:
+                self.thinking = True
+            elif last == self.end_id:
+                self.thinking = False
+            elif self.thinking:
+                self.count += 1
+        if not self.thinking or self.count < self.budget:
+            return logits
+        step = min(self.count - self.budget, len(self.forced) - 1)  # the forced newline counts as thinking too
+        allowed = mx.arange(logits.shape[-1]) == self.forced[step]
+        return mx.where(allowed, logits, mx.array(-float("inf"), dtype=logits.dtype))
 
 
 def _held_back(text: str, marker: str | None) -> int:

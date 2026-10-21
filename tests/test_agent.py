@@ -1,5 +1,6 @@
 """The agent loop with a scripted model: approvals, tools, history, sub-agents, loop hardening and goal mode."""
 
+import json
 import threading
 
 from conftest import FakeEngine, call, new_goal, request, wait_for
@@ -77,6 +78,16 @@ def test_sub_agent_gets_chat_tools_but_cannot_delegate_or_finish_goals(run_scrip
     assert names == ["delegate_task", "read_file"] and r.tools[1]["parent"] == r.tools[0]["id"]
     sub_offered = engine.offered[1]
     assert "read_file" in sub_offered and "delegate_task" not in sub_offered and "update_plan" not in sub_offered
+
+
+def test_old_settings_map_to_the_new_reasoning_scale_and_drop_the_sub_agent_switch():
+    store.SETTINGS_FILE.write_text(json.dumps({"reasoning": "low", "permissions": {"agents": False, "files": True}}))
+    assert store.settings()["reasoning"] == "medium" and "agents" not in store.settings()["permissions"]
+    for _ in range(3):  # saving records the new scale, so the level does not move again
+        store.update_settings({"auto_approve": False})
+        assert store.settings()["reasoning"] == "medium"
+    store.update_settings({"reasoning": "high"})
+    assert store.settings()["reasoning"] == "high"
 
 
 # ----- loop hardening -----
