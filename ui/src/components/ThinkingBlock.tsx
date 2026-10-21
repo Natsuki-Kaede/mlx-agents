@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Brain, ChevronDown } from "lucide-react";
+import { ChevronDown, Lightbulb } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Markdown, countChars } from "./Markdown";
 import { useStickToBottom } from "./useStickToBottom";
@@ -14,7 +14,7 @@ export function ThinkingBlock({ text, tokens, active }: { text: string; tokens?:
   return (
     <div className="glass w-full rounded-2xl px-3.5 py-2.5">
       <button type="button" onClick={() => setOpen((o) => !o)} className="ink-soft flex w-full items-center gap-2 text-left text-xs font-medium">
-        <Brain className={`size-3.5 ${active ? "animate-pulse text-[var(--accent)]" : ""}`} />
+        <Lightbulb className={`size-3.5 ${active ? "animate-pulse text-[var(--accent)]" : ""}`} />
         <span className={active ? "shimmer-text" : ""}>{active ? "思考中…" : "思考过程"}</span>
         <span className="ink-faint tabular-nums">
           {tokens !== undefined ? `${tokens} tokens · ` : ""}

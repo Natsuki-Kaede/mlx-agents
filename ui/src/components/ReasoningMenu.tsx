@@ -1,18 +1,19 @@
 import { motion } from "motion/react";
-import { Brain, ChevronUp } from "lucide-react";
+import { ChevronUp, Lightbulb } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import type { Reasoning } from "../api";
 import { spring } from "./ui";
 import { MenuPanel } from "./MenuPanel";
 import { useDismiss } from "./useDismiss";
 
-/** Effort levels as in Claude; budgets match backend/engine.py REASONING_BUDGETS. */
-export const REASONING: { value: Reasoning; label: string; hint: string }[] = [
-  { value: "low", label: "Low", hint: "不思考，直接回答，最快" },
-  { value: "medium", label: "Medium", hint: "最多约 1k tokens 的思考" },
-  { value: "high", label: "High", hint: "最多约 4k tokens 的思考" },
-  { value: "xhigh", label: "XHigh", hint: "最多约 8k tokens 的思考，可能要几分钟" },
-  { value: "max", label: "Max", hint: "最多约 32k tokens 的思考，16 GB Mac 上可能要半小时" },
+/** Effort levels as in Claude; budgets match backend/engine.py REASONING_BUDGETS. The cost is the most thinking
+ * a reply may add, with time estimated at about 15 tokens/s (a 4-bit 9B model on a 16 GB Mac). */
+export const REASONING: { value: Reasoning; label: string; cost: string }[] = [
+  { value: "low", label: "Low", cost: "不思考，直接回答" },
+  { value: "medium", label: "Medium", cost: "思考 ≤ 1k tokens · 约 1 分钟" },
+  { value: "high", label: "High", cost: "思考 ≤ 4k tokens · 约 4 分钟" },
+  { value: "xhigh", label: "XHigh", cost: "思考 ≤ 8k tokens · 约 9 分钟" },
+  { value: "max", label: "Max", cost: "思考 ≤ 32k tokens · 约 35 分钟" },
 ];
 
 /** Pill button that opens a slider of reasoning levels above it. */
@@ -37,14 +38,14 @@ export function ReasoningMenu({ value, onChange }: { value: Reasoning; onChange:
           index === 0 ? "ink-soft hover:bg-[var(--glass-fill)]" : "glass text-[var(--accent)]"
         }`}
       >
-        <Brain className="size-4" />
+        <Lightbulb className="size-4" />
         <span className="hidden sm:inline">推理 {current.label}</span>
         <motion.span animate={{ rotate: open ? 180 : 0 }} transition={spring}>
           <ChevronUp className="size-3.5" />
         </motion.span>
       </button>
       {open && (
-        <MenuPanel anchor={root} panelRef={panel} width={300} className="px-4 pt-3 pb-3.5">
+        <MenuPanel anchor={root} panelRef={panel} width={232} className="px-3.5 pt-3 pb-3">
           <div className="flex items-baseline justify-between">
             <span className="ink-faint text-[11px] font-medium">推理等级</span>
             <span className="text-[13px] font-semibold text-[var(--accent)]">{current.label}</span>
@@ -75,7 +76,9 @@ export function ReasoningMenu({ value, onChange }: { value: Reasoning; onChange:
               </button>
             ))}
           </div>
-          <div className="ink-soft mt-2.5 text-[11px] leading-snug">{current.hint}</div>
+          <div className="ink-soft mt-2 text-[11px] tabular-nums" title="思考上限，时间按约 15 tokens/秒估算">
+            {current.cost}
+          </div>
         </MenuPanel>
       )}
     </div>
