@@ -1,7 +1,8 @@
 import { MotionConfig, motion } from "motion/react";
 import { Images, MessagesSquare, Moon, Settings, Sun, SunMoon, Wind } from "lucide-react";
 import { Logo } from "./components/Logo";
-import { useEffect, useState, type ReactNode } from "react";
+import { onCommand, reportState, watchDragRegions } from "./native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type OutputMeta, type Status } from "./api";
 import { SettingsDialog, type SettingsTab } from "./components/SettingsDialog";
 import { ChatPage } from "./pages/Chat";
@@ -121,6 +122,28 @@ export default function App() {
     return () => window.removeEventListener("open-settings", open);
   }, []);
 
+  // The desktop client's native window: header drag area, appearance and menu check marks, menu commands.
+  const header = useRef<HTMLElement>(null);
+  useEffect(() => (header.current ? watchDragRegions(header.current) : undefined), []);
+  useEffect(() => reportState({ theme, calm }), [theme, calm]);
+  const commands = useRef<(command: string) => void>(() => undefined);
+  commands.current = (command) => {
+    const [name, value] = command.split(":");
+    if (command === "settings") {
+      setSettingsTab(undefined);
+      setShowSettings(true);
+    } else if (command === "tab-chat" || command === "new-chat") go("chat");
+    else if (command === "tab-gallery") go("gallery");
+    else if (name === "theme") {
+      setTheme(value as Theme);
+      writePref("theme", value);
+    } else if (command === "calm:toggle") {
+      setCalm(!calm);
+      writePref("calm", calm ? "0" : "1");
+    }
+  };
+  useEffect(() => onCommand((command) => commands.current(command)), []);
+
   const go = (t: Tab) => {
     setTab(t);
     writePref("tab", t);
@@ -153,7 +176,7 @@ export default function App() {
 
       {/* Equal gutters on both sides: the logo lines up with the chat list, the settings button with the chat. */}
       <div className="relative z-10 mx-auto max-w-[1680px] px-4 pb-4 sm:px-5">
-        <header className="header-veil sticky top-0 z-40 isolate flex flex-wrap items-center gap-3 py-3">
+        <header ref={header} className="header-veil sticky top-0 z-40 isolate flex min-h-[var(--header-h)] flex-wrap items-center gap-3 ps-[var(--header-inset)]">
           <Logo className="size-9 shrink-0 drop-shadow-[0_4px_12px_rgba(91,108,255,0.35)]" />
 
           <nav className="glass glass-refract flex gap-1 rounded-full p-1">

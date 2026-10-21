@@ -27,6 +27,7 @@ import { useStickToBottom } from "../components/useStickToBottom";
 import { Button, ErrorNote, Glass, spring } from "../components/ui";
 import { GoalCard } from "../components/GoalCard";
 import { COMMAND_PROMPTS, parseCommand } from "../components/slashCommands";
+import { onCommand, reportState } from "../native";
 import { applySettings, updateSettings, useAppSettings } from "../settingsStore";
 
 const ASPECTS: Record<string, number> = { "1:1": 1, "3:4": 3 / 4, "4:3": 4 / 3, "9:16": 9 / 16, "16:9": 16 / 9 };
@@ -222,13 +223,28 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
     if (command.name in COMMAND_PROMPTS) return sendMessage(COMMAND_PROMPTS[command.name], attachments, false, typed);
     setInput("");
     if (command.name === "new") return openChat(null);
-    if (command.name === "auto") {
-      const on = !settings?.auto_approve;
-      updateSettings({ auto_approve: on })
-        .then(() => setNotice(on ? "已开启自动批准：写文件、运行命令不再询问" : "已关闭自动批准"))
-        .catch((e) => setError(errorText(e)));
-    }
+    if (command.name === "auto") toggleAutoApprove();
   };
+
+  const toggleAutoApprove = () => {
+    const on = !settings?.auto_approve;
+    updateSettings({ auto_approve: on })
+      .then(() => setNotice(on ? "已开启自动批准：写文件、运行命令不再询问" : "已关闭自动批准"))
+      .catch((e) => setError(errorText(e)));
+  };
+  const stopRun = () => run && api.cancelRun(run.id).catch((e) => setError(errorText(e)));
+
+  // The native menu bar (desktop client): its chat commands, and the auto-approve check mark.
+  const commands = useRef<(command: string) => void>(() => undefined);
+  commands.current = (command) => {
+    if (command === "new-chat") openChat(null);
+    else if (command === "stop") stopRun();
+    else if (command === "auto:toggle") toggleAutoApprove();
+  };
+  useEffect(() => onCommand((command) => commands.current(command)), []);
+  useEffect(() => {
+    if (settings) reportState({ auto: settings.auto_approve });
+  }, [settings]);
 
   /** Start a run; `asGoal` makes the message the chat's new goal (an unfinished goal is continued anyway).
    * `typed` is what goes back into the input box if the run cannot start. */
@@ -331,7 +347,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
 
   return (
     <ChatActionsContext.Provider value={actions}>
-      <div className="grid h-[calc(100dvh-90px)] gap-4 md:grid-cols-[264px_minmax(0,1fr)]">
+      <div className="grid h-[calc(100dvh-var(--header-h)-30px)] gap-4 md:grid-cols-[264px_minmax(0,1fr)]">
         <div className="hidden min-h-0 md:block">{sidebar}</div>
         {createPortal(
           showHistory && (
@@ -349,7 +365,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             <GoalCard
               goal={goal}
               running={running}
-              onStop={() => run && api.cancelRun(run.id).catch((e) => setError(errorText(e)))}
+              onStop={stopRun}
               onContinue={() => sendMessage("继续推进目标。", [], false)}
               onClear={() =>
                 api
@@ -478,7 +494,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
             onAttachFiles={attach}
             running={running}
             onSend={send}
-            onStop={() => run && api.cancelRun(run.id).catch((e) => setError(errorText(e)))}
+            onStop={stopRun}
             onShowHistory={() => setShowHistory(true)}
             onError={setError}
             models={models?.models ?? []}

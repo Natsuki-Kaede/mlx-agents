@@ -18,6 +18,8 @@ from urllib.parse import parse_qs
 import uvicorn
 import webview
 
+from desktop import native
+
 ROOT = Path(__file__).resolve().parents[1]
 HERE = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -188,6 +190,7 @@ def main() -> None:
         window.load_url(f"http://127.0.0.1:{PORT}/?token={backend.token}")
 
     window.events.closing += on_closing
+    native.install(window)
     webview.start(boot, private_mode=False, storage_path=str(DATA / "webview"), icon=str(ICON) if ICON.exists() else None)
 
     backend.stop()

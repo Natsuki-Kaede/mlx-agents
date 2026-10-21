@@ -22,7 +22,22 @@
   --blob-2: #ffb3d9;
   --blob-3: #8ce0d0;
   --blob-4: #ffd28c;
+  --header-h: 60px;
+  --header-inset: 0px;
   color-scheme: light;
+}
+
+/* In the desktop client's native window the header is the title bar: as tall as a unified toolbar, starting
+   after the traffic lights, over the system's translucent window material. */
+[data-shell="native"] {
+  --header-h: 52px;
+  --header-inset: 76px;
+}
+[data-shell="native"] body {
+  background: transparent;
+}
+[data-shell="native"] .ambient .blob {
+  opacity: 0.4;
 }
 
 [data-theme="dark"] {
