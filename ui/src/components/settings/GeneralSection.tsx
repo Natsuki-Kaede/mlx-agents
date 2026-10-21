@@ -8,6 +8,8 @@ const PARAMS: [keyof GenParams, string, number, number, number, (v: number) => s
   ["max_tokens", "每轮最大生成长度", 64, 4096, 64, (v) => `${v} tokens`],
   ["temperature", "温度", 0, 1.5, 0.05, (v) => v.toFixed(2)],
   ["repetition_penalty", "重复惩罚", 1, 1.5, 0.05, (v) => v.toFixed(2)],
+  ["top_p", "Top-p", 0.5, 1, 0.01, (v) => v.toFixed(2)],
+  ["top_k", "Top-k", 0, 100, 1, (v) => (v ? String(v) : "不限")],
 ];
 
 /** Workspace folder, global instructions (AGENTS.md) and generation parameters. */

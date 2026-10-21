@@ -39,6 +39,8 @@ class GenParams(BaseModel):
     max_tokens: int = Field(1024, ge=16, le=8192)
     temperature: float = Field(0.7, ge=0, le=2)
     repetition_penalty: float = Field(1.1, ge=1, le=2)
+    top_p: float = Field(0.95, ge=0, le=1)
+    top_k: int = Field(20, ge=0, le=200)
 
 
 class Permissions(BaseModel):

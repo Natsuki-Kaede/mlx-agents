@@ -104,7 +104,7 @@ DEFAULT_SETTINGS = {
     "permissions": {"web": False, "image": True, "files": False, "exec": False, "mcp": False, "agents": False},
     "auto_approve": False,
     "reasoning": "off",
-    "params": {"max_tokens": 1024, "temperature": 0.7, "repetition_penalty": 1.1},
+    "params": {"max_tokens": 1024, "temperature": 0.7, "repetition_penalty": 1.1, "top_p": 0.95, "top_k": 20},
     "instructions": "",  # global instructions, like an AGENTS.md
 }
 

@@ -372,13 +372,14 @@ class Engine:
             extra = ({"enable_thinking": True} | ({"thinking_budget": budget} if budget else {})) if reasoning else {}
             generator = vlm_stream_generate(
                 model, processor, prompt, image=images or None, video=videos or None, max_tokens=max_tokens,
-                temperature=params["temperature"], repetition_penalty=params["repetition_penalty"],
-                fps=VIDEO_FPS, max_frames=VIDEO_MAX_FRAMES, **extra,
+                temperature=params["temperature"], top_p=params.get("top_p", 1.0), top_k=params.get("top_k", 0),
+                repetition_penalty=params["repetition_penalty"], fps=VIDEO_FPS, max_frames=VIDEO_MAX_FRAMES, **extra,
             )
         else:
             prompt = processor.apply_chat_template(messages, tools=tools, add_generation_prompt=True, tokenize=False, enable_thinking=reasoning)
             generator = lm_stream_generate(
-                model, processor, prompt, max_tokens=max_tokens, sampler=make_sampler(temp=params["temperature"]),
+                model, processor, prompt, max_tokens=max_tokens,
+                sampler=make_sampler(temp=params["temperature"], top_p=params.get("top_p", 0.0), top_k=params.get("top_k", 0)),
                 logits_processors=make_logits_processors(repetition_penalty=params["repetition_penalty"]),
             )
         # Templates that pre-open the thinking block leave the prompt inside it.
