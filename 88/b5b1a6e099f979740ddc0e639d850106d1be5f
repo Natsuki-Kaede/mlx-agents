@@ -1,0 +1,34 @@
+ui/src/pages/Chat.tsx
+  s_3f34af772b621d::t_100d951d8bb785 30,226-233,235-247,350,368,497
+ui/src/App.tsx
+  s_3f34af772b621d::t_100d951d8bb785 4-5,125-146,179
+ui/src/index.css
+  s_3f34af772b621d::t_100d951d8bb785 25-26,30-41
+  s_3f34af772b621d::t_d0774023609fed 42
+desktop/native.py
+  s_3f34af772b621d::t_2fb459ea966870 1-88,93-109,111-211,213,216
+  s_3f34af772b621d::t_98483b702d32c0 89-92,212,214-215,217
+  s_3f34af772b621d::t_7e885836901ac2 110
+desktop/app.py
+  s_3f34af772b621d::t_98483b702d32c0 21-22,193
+ui/src/native.ts
+  s_3f34af772b621d::t_f9dc9e1e89c39e 27,40
+  s_3f34af772b621d::t_7e885836901ac2 1-22,24,28-33,35-39,41-43,45-56
+  s_3f34af772b621d::t_78cca75fb37b19 23,25-26,34,44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88b5b1a6e099f979740ddc0e639d850106d1be5f",
+  "prompts": {},
+  "sessions": {
+    "s_3f34af772b621d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8da5055c-fa29-44b2-89cc-86da292dd2b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Natsuki-Kaede <i@pari.network>"
+    }
+  }
+}
