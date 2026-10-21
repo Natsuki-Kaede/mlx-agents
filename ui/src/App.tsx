@@ -1,5 +1,6 @@
 import { MotionConfig, motion } from "motion/react";
-import { Images, MessagesSquare, Moon, Settings, Sparkle, Sun, SunMoon, Wind } from "lucide-react";
+import { Images, MessagesSquare, Moon, Settings, Sun, SunMoon, Wind } from "lucide-react";
+import { Logo } from "./components/Logo";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type OutputMeta, type Status } from "./api";
 import { SettingsDialog, type SettingsTab } from "./components/SettingsDialog";
@@ -150,14 +151,10 @@ export default function App() {
         <div className="grain" />
       </div>
 
-      <div className="relative z-10 mx-auto max-w-[1440px] px-4 pb-6 sm:px-6">
-        <header className="header-veil sticky top-0 z-40 isolate flex flex-wrap items-center gap-3 py-4">
-          <div className="flex items-center gap-2 pr-2">
-            <div className="accent-fill grid size-9 place-items-center rounded-2xl">
-              <Sparkle className="size-5" />
-            </div>
-            <div className="hidden text-[15px] font-semibold md:block">MLX Agents</div>
-          </div>
+      {/* Equal gutters on both sides: the logo lines up with the chat list, the settings button with the chat. */}
+      <div className="relative z-10 mx-auto max-w-[1680px] px-4 pb-4 sm:px-5">
+        <header className="header-veil sticky top-0 z-40 isolate flex flex-wrap items-center gap-3 py-3">
+          <Logo className="size-9 shrink-0 drop-shadow-[0_4px_12px_rgba(91,108,255,0.35)]" />
 
           <nav className="glass glass-refract flex gap-1 rounded-full p-1">
             {TABS.map(({ id, label, icon: Icon }) => (

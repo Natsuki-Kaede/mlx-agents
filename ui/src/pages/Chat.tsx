@@ -331,7 +331,7 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
 
   return (
     <ChatActionsContext.Provider value={actions}>
-      <div className="mx-auto grid h-[calc(100dvh-112px)] max-w-6xl gap-4 md:grid-cols-[250px_minmax(0,1fr)]">
+      <div className="grid h-[calc(100dvh-90px)] gap-4 md:grid-cols-[264px_minmax(0,1fr)]">
         <div className="hidden min-h-0 md:block">{sidebar}</div>
         {createPortal(
           showHistory && (
