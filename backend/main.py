@@ -158,7 +158,8 @@ def start_run(req: RunRequest):
     content = req.content.strip() or "请描述这个内容。"
     request = req.model_dump() | {
         "attachments": attachments, "content": content, "model": model.id,
-        "permissions": settings["permissions"], "params": settings["params"] | {"reasoning": settings["reasoning"]},
+        "permissions": settings["permissions"],
+        "params": settings["params"] | {"reasoning": settings["reasoning"], "auto_sampling": settings["sampling_auto"]},
         "goal": goal_for_run(req.chat_id, content, req.goal),
         "goal_budget": {"rounds": settings["goal_max_rounds"], "minutes": settings["goal_max_minutes"]},
     }
@@ -383,6 +384,7 @@ class SettingsPatch(BaseModel):
     auto_approve: bool | None = None
     reasoning: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     params: GenParams | None = None
+    sampling_auto: bool | None = None
     instructions: str | None = Field(None, max_length=20000)
     goal_max_rounds: int | None = Field(None, ge=10, le=1000)
     goal_max_minutes: int | None = Field(None, ge=5, le=600)

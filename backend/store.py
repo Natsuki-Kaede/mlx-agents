@@ -109,6 +109,7 @@ DEFAULT_SETTINGS = {
     "reasoning": "low",
     "reasoning_scale": 2,  # REASONING_SCALE
     "params": {"max_tokens": 1024, "temperature": 0.7, "repetition_penalty": 1.1, "top_p": 0.95, "top_k": 20},
+    "sampling_auto": True,  # use each model's recommended sampling instead of the values in params
     "instructions": "",  # global instructions, like an AGENTS.md
     # Budget of one goal run (it pauses when either runs out; the user can continue it).
     "goal_max_rounds": 120,

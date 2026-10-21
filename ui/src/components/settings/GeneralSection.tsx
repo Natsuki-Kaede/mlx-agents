@@ -1,11 +1,11 @@
-import { FileText, FolderOpen, SlidersHorizontal, Target } from "lucide-react";
+import { ChevronDown, FileText, FolderOpen, SlidersHorizontal, Target } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { GenParams } from "../../api";
+import { api, type GenParams, type ModelList } from "../../api";
 import { updateSettings, useAppSettings } from "../../settingsStore";
-import { Button, Label, Slider } from "../ui";
+import { Button, Label, Slider, Toggle } from "../ui";
 
-const PARAMS: [keyof GenParams, string, number, number, number, (v: number) => string][] = [
-  ["max_tokens", "每轮最大生成长度", 64, 4096, 64, (v) => `${v} tokens`],
+/** Sampling parameters, set by hand only when automatic (per-model recommended) sampling is off. */
+const SAMPLING: [Exclude<keyof GenParams, "max_tokens">, string, number, number, number, (v: number) => string][] = [
   ["temperature", "温度", 0, 1.5, 0.05, (v) => v.toFixed(2)],
   ["repetition_penalty", "重复惩罚", 1, 1.5, 0.05, (v) => v.toFixed(2)],
   ["top_p", "Top-p", 0.5, 1, 0.01, (v) => v.toFixed(2)],
@@ -20,9 +20,15 @@ export function GeneralSection({ onError }: { onError: (e: string | null) => voi
   const [params, setParams] = useState<GenParams | null>(null);
   const [budget, setBudget] = useState<{ goal_max_rounds: number; goal_max_minutes: number } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [advanced, setAdvanced] = useState(false);
+  const [models, setModels] = useState<ModelList | null>(null);
   const paramsTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const budgetTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const textTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    api.models().then(setModels).catch(() => undefined);
+  }, []);
 
   // Drafts start from the saved values once they have loaded.
   useEffect(() => {
@@ -66,6 +72,9 @@ export function GeneralSection({ onError }: { onError: (e: string | null) => voi
     budgetTimer.current = setTimeout(() => save(next, "goal"), 400);
   };
 
+  const chatModel = models?.models.find((m) => m.id === (settings?.chat_model ?? models.default_chat));
+  const recommended = chatModel?.sampling;
+
   if (!settings || workspace === null || instructions === null || !params || !budget) return <div className="ink-faint py-6 text-center text-xs">加载中…</div>;
 
   return (
@@ -102,15 +111,37 @@ export function GeneralSection({ onError }: { onError: (e: string | null) => voi
       </section>
 
       <section className="space-y-3">
-        <Label hint={saved === "params" ? "已保存" : undefined}>
+        <Label hint={saved === "params" || saved === "sampling" ? "已保存" : undefined}>
           <span className="inline-flex items-center gap-1.5">
-            <SlidersHorizontal className="size-4" /> 生成参数
+            <SlidersHorizontal className="size-4" /> 生成
           </span>
         </Label>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {PARAMS.map(([key, label, min, max, step, format]) => (
-            <Slider key={key} label={label} value={params[key]} min={min} max={max} step={step} format={format} onChange={(v) => changeParam(key, v)} />
-          ))}
+        <Slider label="每轮最大输出长度" value={params.max_tokens} min={64} max={4096} step={64} format={(v) => `${v} tokens`} onChange={(v) => changeParam("max_tokens", v)} />
+        <div className="ink-faint text-xs">不含思考：思考的额度由推理等级决定，另外计算。</div>
+        <button type="button" onClick={() => setAdvanced((a) => !a)} className="ink-soft flex items-center gap-1 text-xs font-medium">
+          <ChevronDown className={`size-3.5 transition-transform duration-300 ${advanced ? "rotate-180" : ""}`} /> 高级
+        </button>
+        <div className={`reveal ${advanced ? "open" : ""}`}>
+          <div className="space-y-3">
+            <Toggle
+              checked={settings.sampling_auto}
+              onChange={(sampling_auto) => save({ sampling_auto }, "sampling")}
+              label="采样参数按模型自动选择（推荐）"
+            />
+            {settings.sampling_auto ? (
+              <div className="ink-soft text-xs leading-relaxed">
+                {recommended
+                  ? `${chatModel!.id} 推荐：温度 ${recommended.temperature} · Top-p ${recommended.top_p} · Top-k ${recommended.top_k} · 重复惩罚 ${recommended.repetition_penalty}`
+                  : "使用模型自带的 generation_config.json，没有时按模型系列的推荐值。"}
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {SAMPLING.map(([key, label, min, max, step, format]) => (
+                  <Slider key={key} label={label} value={params[key]} min={min} max={max} step={step} format={format} onChange={(v) => changeParam(key, v)} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </section>
 

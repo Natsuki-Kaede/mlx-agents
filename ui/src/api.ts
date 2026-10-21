@@ -1,7 +1,9 @@
 export type Upload = { id: string; kind: "image" | "video"; url: string };
 export type Status = { loaded: string | null; loaded_kind: "chat" | "image" | null; busy: string | null; pending: number; active_gb: number; runs: number; cpu: number; gpu: number | null };
+export type Sampling = { temperature: number; top_p: number; top_k: number; repetition_penalty: number };
 export type ModelInfo = {
   id: string;
+  sampling?: Partial<Sampling>; // the model's recommended values (chat models)
   kind: "chat" | "image";
   runtime: "mlx-lm" | "mlx-vlm" | "mflux";
   vision: boolean;
@@ -158,6 +160,7 @@ export type McpServerStatus = { name: string; state: "idle" | "connecting" | "co
 export type McpState = { config: { mcpServers: Record<string, unknown> }; status: McpServerStatus[] };
 export type AppSettings = {
   workspace: string;
+  sampling_auto: boolean; // use each model's recommended sampling instead of params
   workspace_resolved: string;
   chat_model?: string;
   image_model?: string;

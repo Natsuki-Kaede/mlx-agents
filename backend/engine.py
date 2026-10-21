@@ -351,6 +351,8 @@ class Engine:
         info = models.resolve("chat", model_id)
         if (images or videos) and not info.vision:
             raise ValueError(f"{info.id} 是纯文本模型，看不了图片或视频；请换一个视觉模型")
+        if params.get("auto_sampling"):
+            params = params | info.sampling
         mx.reset_peak_memory()
         start = time.time()
         model, processor = self._load(info)

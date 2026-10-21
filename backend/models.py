@@ -44,6 +44,7 @@ class ModelInfo:
     size_gb: float = 0.0
     supported: bool = True
     note: str = ""
+    sampling: dict = field(default_factory=dict)  # the model's recommended sampling (chat models)
 
     def public(self) -> dict:
         return {k: v for k, v in asdict(self).items() if k != "path"}
@@ -64,6 +65,27 @@ def _has_module(runtime: str, model_type: str) -> bool:
     return bool(name) and importlib.util.find_spec(f"{package}.models.{name}") is not None
 
 
+# Recommended sampling of model families whose converted weights often ship without generation_config.json
+# (from the Qwen3 and Gemma model cards); the first matching model_type prefix wins.
+FAMILY_SAMPLING = [
+    ("qwen3", {"temperature": 0.6, "top_p": 0.95, "top_k": 20}),
+    ("gemma", {"temperature": 1.0, "top_p": 0.95, "top_k": 64}),
+]
+DEFAULT_SAMPLING = {"temperature": 0.7, "top_p": 0.95, "top_k": 20, "repetition_penalty": 1.0}
+SAMPLING_KEYS = tuple(DEFAULT_SAMPLING)
+
+
+def recommended_sampling(path: Path, model_type: str) -> dict:
+    """Sampling values the model's authors recommend: its generation_config.json, else its family's, else defaults."""
+    family = next((values for prefix, values in FAMILY_SAMPLING if model_type.startswith(prefix)), {})
+    try:
+        config = json.loads((path / "generation_config.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        config = {}
+    shipped = {k: config[k] for k in SAMPLING_KEYS if isinstance(config.get(k), (int, float))}
+    return DEFAULT_SAMPLING | family | shipped
+
+
 def _inspect(path: Path) -> ModelInfo | None:
     if (path / "transformer").is_dir() and (path / "vae").is_dir():
         return ModelInfo(path.name, "image", "mflux", path, size_gb=_size_gb(path), model_type="qwen-image-2.1")
@@ -79,6 +101,7 @@ def _inspect(path: Path) -> ModelInfo | None:
     runtime = "mlx-vlm" if vision else "mlx-lm"
     quant = config.get("quantization") or config.get("quantization_config") or {}
     info = ModelInfo(path.name, "chat", runtime, path, vision=vision, model_type=model_type, bits=quant.get("bits"), size_gb=_size_gb(path))
+    info.sampling = recommended_sampling(path, model_type)
     if any(path.rglob(f"*{PART}")):
         info.supported, info.note = False, "还没下载完，可以重新下载以续传"
     elif not _has_module(runtime, model_type):
