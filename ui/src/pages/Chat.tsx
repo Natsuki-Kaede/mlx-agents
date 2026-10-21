@@ -350,7 +350,8 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
 
   return (
     <ChatActionsContext.Provider value={actions}>
-      <div className="grid h-[calc(100dvh-var(--header-h)-30px)] gap-4 md:grid-cols-[264px_minmax(0,1fr)]">
+      {/* The chat list sits exactly under the tab switcher: past the logo (and the traffic lights), as wide as it. */}
+      <div className="grid h-[calc(100dvh-var(--header-h)-30px)] gap-4 md:ml-[calc(var(--header-inset)+48px)] md:grid-cols-[var(--nav-w)_minmax(0,1fr)]">
         <div className="hidden min-h-0 md:block">{sidebar}</div>
         {createPortal(
           showHistory && (

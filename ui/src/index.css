@@ -24,6 +24,7 @@
   --blob-4: #ffd28c;
   --header-h: 60px;
   --header-inset: 0px;
+  --nav-w: 216px; /* the tab switcher, and the chat list under it */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: light;
 }

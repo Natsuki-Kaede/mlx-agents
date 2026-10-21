@@ -172,11 +172,11 @@ export default function App() {
         <header ref={header} className="header-veil sticky top-0 z-40 isolate flex min-h-[var(--header-h)] flex-wrap items-center gap-3 ps-[var(--header-inset)]">
           <Logo className="size-9 shrink-0 drop-shadow-[0_4px_12px_rgba(91,108,255,0.35)]" />
 
-          {/* Equal-width tabs, so the highlight can slide between them. */}
-          <nav className="glass glass-refract relative inline-grid grid-cols-2 gap-1 rounded-full p-1">
+          {/* Equal-width tabs; at md and up the nav is exactly as wide as the chat list under it. */}
+          <nav className="glass glass-refract relative inline-grid grid-cols-2 gap-1 rounded-full p-1 md:w-[var(--nav-w)]">
             <SlidePill index={TABS.findIndex((t) => t.id === tab)} count={TABS.length} className="accent-fill rounded-full" />
             {TABS.map(({ id, label, icon: Icon }) => (
-              <button key={id} type="button" onClick={() => go(id)} className="relative rounded-full px-3.5 py-2 text-sm font-medium sm:px-4">
+              <button key={id} type="button" onClick={() => go(id)} className="relative rounded-full px-3 py-2 text-sm font-medium whitespace-nowrap">
                 <span className={`relative flex items-center justify-center gap-1.5 transition-colors duration-300 ${tab === id ? "text-white" : "ink-soft"}`}>
                   <Icon className="size-4" />
                   <span className="hidden sm:inline">{label}</span>
