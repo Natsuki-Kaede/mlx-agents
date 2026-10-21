@@ -260,7 +260,12 @@ async def job_events(job_id: str):
 
 @app.get("/api/chats")
 def list_chats():
-    return store.list_chats()
+    """Chats with what their current run is doing (queued, running, tool, approval) for the sidebar."""
+    out = []
+    for chat in store.list_chats():
+        run = agent.active_run(chat["id"])
+        out.append(chat | {"run": run.phase if run else None})
+    return out
 
 
 @app.delete("/api/chats/{chat_id}/goal")

@@ -139,9 +139,11 @@ export type Goal = {
   created: number;
   updated: number;
 };
+/** What a chat's run is doing right now, for the sidebar. */
+export type RunPhase = "starting" | "queued" | "running" | "tool" | "approval";
 export type SavedChat = { title: string; turns: ChatTurn[]; goal?: Goal | null };
-export type ChatSummary = { id: string; title: string; updated: number; turns: number };
-export type RunInfo = { id: string; chat_id: string; status: string; events: number; created: number };
+export type ChatSummary = { id: string; title: string; updated: number; turns: number; run?: RunPhase | null; goal?: GoalStatus | null };
+export type RunInfo = { id: string; chat_id: string; status: string; phase?: RunPhase; events: number; created: number };
 export type RunEvent = { seq: number } & (
   | { type: "status"; status: string; note?: string }
   | { type: "thinking" | "answer"; text: string; tokens: TokenCounts }

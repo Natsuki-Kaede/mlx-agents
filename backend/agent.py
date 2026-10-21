@@ -184,6 +184,7 @@ class Run:
     plan: list[dict] = field(default_factory=list)
     created: float = field(default_factory=time.time)
     history: list[dict] = field(default_factory=list)
+    phase: str = "starting"  # queued (waiting for the model) | running | tool | approval
     rounds: int = 0  # model calls made, sub-agents included
     goal_outcome: str | None = None  # done | waiting | stalled | budget, set during a goal run
     goal_result: dict = field(default_factory=dict)
@@ -233,7 +234,7 @@ class Run:
             return self._decisions.get(tool_id, "cancelled" if self._cancel else "timeout")
 
     def public(self) -> dict:
-        return {"id": self.id, "chat_id": self.chat_id, "status": self.status, "events": len(self.events), "created": self.created}
+        return {"id": self.id, "chat_id": self.chat_id, "status": self.status, "phase": self.phase, "events": len(self.events), "created": self.created}
 
 
 @dataclass
@@ -458,6 +459,8 @@ class Agent:
             if main_goal and run.goal_outcome in ("done", "waiting"):
                 break
             self._compact(run, scope, convo, anchor)
+            if scope.parent is None:
+                run.phase = "running"
 
     def _generate(self, run: Run, scope: Scope, convo: list[dict], emit_text, tools, token_base) -> dict | None:
         """One model call on the MLX thread; None when the run was cancelled while it waited."""
@@ -465,9 +468,11 @@ class Agent:
 
         def queued() -> None:
             waited.append(True)
+            run.phase = "queued"
             run.emit({"type": "status", "status": "queued"})
 
         def started() -> None:
+            run.phase = "running"
             if waited:
                 run.emit({"type": "status", "status": "running"})
 
@@ -550,7 +555,9 @@ class Agent:
             if tool.approval and not store.settings()["auto_approve"]:
                 card.update(status="awaiting_approval", approval=tool.preview(ctx, args) if tool.preview else {"summary": name, "detail": ""})
                 run.emit({"type": "tool", "tool": dict(card)})
+                run.phase = "approval"
                 decision = run.wait_decision(card["id"])
+                run.phase = "tool"
                 if decision == "always":
                     store.update_settings({"auto_approve": True})
                     run.emit({"type": "auto_approve", "auto_approve": True})
@@ -560,6 +567,8 @@ class Agent:
                     return DENIAL_TEXT.get(decision, "等待审批超时，操作没有执行。")
                 card.update(status="running", decision=decision)
             run.emit({"type": "tool", "tool": dict(card)})
+            if run.phase != "approval":
+                run.phase = "tool"
             text, extra = tool.handler(ctx, args)
             card.update(extra, status="done")
             run.tool_seq += 1

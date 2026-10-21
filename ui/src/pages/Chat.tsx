@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { ArrowDown, ImageIcon, MessageSquarePlus, ScanSearch, Target, Trash2 } from "lucide-react";
+import { ArrowDown, CircleHelp, ImageIcon, Loader2, MessageSquarePlus, MoreHorizontal, PauseCircle, ScanSearch, ShieldAlert, Target, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -74,6 +74,17 @@ function applyEvent(turn: ChatTurn, ev: RunEvent): ChatTurn {
   }
 }
 
+/** A chat's state in the sidebar: what its run is doing, or a goal that needs attention. */
+function ChatStatus({ chat }: { chat: ChatSummary }) {
+  if (chat.run === "queued") return <MoreHorizontal className="ink-soft size-3.5 shrink-0 animate-pulse" aria-label="排队中" />;
+  if (chat.run === "approval") return <ShieldAlert className="size-3.5 shrink-0 text-[var(--warn)]" aria-label="等你批准" />;
+  if (chat.run) return <Loader2 className="size-3.5 shrink-0 animate-spin text-[var(--accent)]" aria-label="生成中" />;
+  if (chat.goal === "waiting") return <CircleHelp className="size-3.5 shrink-0 text-[var(--warn)]" aria-label="目标等你回复" />;
+  if (chat.goal === "paused" || chat.goal === "stalled") return <PauseCircle className="ink-soft size-3.5 shrink-0" aria-label="目标已暂停" />;
+  if (chat.goal === "active") return <Target className="size-3.5 shrink-0 text-[var(--accent)]" aria-label="目标" />;
+  return null;
+}
+
 export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   // Conversations, runs and settings live in the backend; only the open chat is remembered locally.
   const [ui, setUi] = usePersistentState("chat:ui", { chatId: null as string | null });
@@ -96,6 +107,14 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
   const running = !!run && run.chat_id === chatId;
 
   const refreshChats = useCallback(() => api.chats().then(setChats).catch(() => undefined), []);
+  const anyRunning = !!run || chats.some((c) => c.run);
+
+  // While anything runs, keep the sidebar's status icons fresh (runs in other chats included).
+  useEffect(() => {
+    if (!anyRunning) return;
+    const timer = setInterval(refreshChats, 2000);
+    return () => clearInterval(timer);
+  }, [anyRunning, refreshChats]);
   const refreshModels = useCallback(() => api.models().then(setModels).catch(() => undefined), []);
 
   /** Load a chat from the backend, which owns it; ignored if another chat was opened meanwhile. */
@@ -270,7 +289,10 @@ export function ChatPage({ prefill }: { prefill: OutputMeta | null }) {
               onClick={() => openChat(c.id)}
               className={`w-full rounded-2xl px-3 py-2.5 text-left transition-colors ${c.id === chatId ? "glass glass-strong" : "hover:bg-[var(--glass-fill)]"}`}
             >
-              <div className="truncate pr-6 text-[13px] font-medium">{c.title}</div>
+              <div className="flex items-center gap-1.5 pr-6 text-[13px] font-medium">
+                <ChatStatus chat={c} />
+                <span className="truncate">{c.title}</span>
+              </div>
               <div className="ink-faint mt-0.5 text-[11px] tabular-nums">
                 {when(c.updated)} · {Math.ceil(c.turns / 2)} 轮
               </div>

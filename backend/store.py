@@ -63,7 +63,10 @@ def list_chats() -> list[dict]:
     chats = []
     for f in sorted(CHATS.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         data = json.loads(f.read_text())
-        chats.append({"id": f.stem, "title": data["title"], "updated": data["updated"], "turns": len(data["turns"])})
+        chats.append({
+            "id": f.stem, "title": data["title"], "updated": data["updated"], "turns": len(data["turns"]),
+            "goal": (data.get("goal") or {}).get("status"),
+        })
     return chats
 
 
