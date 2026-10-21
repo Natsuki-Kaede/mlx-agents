@@ -26,6 +26,10 @@ export function Composer(props: {
   onRefreshModels: () => void;
 }) {
   const { input, attachments, running } = props;
+  // Safari/WebKit ends an IME composition before the Enter keydown arrives, with isComposing already false;
+  // track composition ourselves so the Enter that commits typed text does not also send the message.
+  const composing = useRef(false);
+  const composedAt = useRef(0);
   const settings = useAppSettings();
   const save = (patch: Parameters<typeof updateSettings>[0]) =>
     updateSettings(patch).catch((e) => props.onError(`设置未能保存：${e instanceof Error ? e.message : e}`));
@@ -71,11 +75,19 @@ export function Composer(props: {
         rows={1}
         value={input}
         onChange={(e) => props.onInput(e.target.value)}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={() => {
+          composing.current = false;
+          composedAt.current = Date.now();
+        }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            if (sendable && !running) props.onSend();
-          }
+          if (e.key !== "Enter" || e.shiftKey) return;
+          const ime = e.nativeEvent.isComposing || composing.current || e.keyCode === 229 || Date.now() - composedAt.current < 80;
+          if (ime) return;
+          e.preventDefault();
+          if (sendable && !running) props.onSend();
         }}
         placeholder="说说要做什么，Enter 发送"
         className="scroll-soft block max-h-48 min-h-11 w-full resize-none bg-transparent px-2.5 py-2 text-[15px] outline-none placeholder:text-[var(--ink-faint)]"
